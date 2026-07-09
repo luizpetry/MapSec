@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from textual.widgets import Static
@@ -14,10 +13,10 @@ class PluginStatus(Static):
     """Widget that displays the status of a single plugin during scan."""
 
     STATUS_ICONS = {
-        "pending": Text("○", style="dim"),
-        "running": Text("⏳", style="bold yellow"),
-        "success": Text("✓", style="bold green"),
-        "failed": Text("✗", style="bold red"),
+        "pending": Text("[ ]", style="dim"),
+        "running": Text("[>]", style="bold yellow"),
+        "success": Text("[+]", style="bold green"),
+        "failed": Text("[x]", style="bold red"),
     }
 
     def __init__(self, plugin_name: str, **kwargs) -> None:
@@ -53,12 +52,12 @@ class PluginStatus(Static):
         if self._status == "pending":
             self.update(icon + label)
         elif self._status == "running":
-            self.update(icon + label + Text(" — running...", style="yellow"))
+            self.update(icon + label + Text(" - running...", style="yellow"))
         elif self._status == "success":
-            time_str = f" — {self._duration:.1f}s" if self._duration is not None else ""
+            time_str = f" - {self._duration:.1f}s" if self._duration is not None else ""
             self.update(icon + label + Text(time_str, style="green"))
         elif self._status == "failed":
-            err = f" — {self._error}" if self._error else ""
+            err = f" - {self._error}" if self._error else ""
             self.update(icon + label + Text(err, style="red"))
 
 
@@ -75,7 +74,7 @@ class ResultPanel(Static):
 
         if r.success:
             table = Table(
-                title=f"{r.plugin.upper()} — {r.target}",
+                title=f"{r.plugin.upper()} - {r.target}",
                 show_header=True,
                 header_style="bold cyan",
                 border_style="green",
@@ -84,9 +83,7 @@ class ResultPanel(Static):
 
             data = r.data
             if isinstance(data, dict):
-                # Render data as key-value pairs or nested structure
                 if "hosts" in data:
-                    # Nmap results
                     table.add_column("Port", style="cyan", width=8)
                     table.add_column("State", style="green", width=8)
                     table.add_column("Service", style="white")
@@ -100,7 +97,6 @@ class ResultPanel(Static):
                                 svc_str,
                             )
                 elif "records" in data:
-                    # DNS results
                     table.add_column("Type", style="cyan", width=8)
                     table.add_column("Value", style="white")
                     for rtype, records in data.get("records", {}).items():
@@ -115,7 +111,6 @@ class ResultPanel(Static):
                     if subs:
                         table.add_row("SUB", f"{subs} subdomains found", style="dim")
                 elif "malicious" in data:
-                    # VirusTotal results
                     table.add_column("Metric", style="cyan", width=16)
                     table.add_column("Value", style="white")
                     table.add_row("Malicious", str(data.get("malicious", 0)), style="red" if data.get("malicious", 0) > 0 else "")
@@ -126,13 +121,12 @@ class ResultPanel(Static):
                     if data.get("country"):
                         table.add_row("Country", data["country"])
                 else:
-                    # Generic fallback
                     table.add_column("Key", style="cyan")
                     table.add_column("Value", style="white")
                     for k, v in data.items():
                         table.add_row(str(k), str(v))
 
-            self.update(Panel(table, border_style="green", title=r.plugin.upper()))
+            self.update(table)
         else:
             error_text = Text(f"Error: {r.error}", style="bold red")
-            self.update(Panel(error_text, border_style="red", title=r.plugin.upper()))
+            self.update(error_text)

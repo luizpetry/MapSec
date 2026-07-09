@@ -1,4 +1,4 @@
-"""Mapsec TUI Application — Terminal Interface for Security Reconnaissance."""
+"""Mapsec TUI Application - Terminal Interface for Security Reconnaissance."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ class MapsecApp(App):
         height: auto;
         padding: 1 2;
         margin: 0 0 1 0;
-        border: solid $primary;
+        border: tall $primary;
     }
 
     #target_label {
@@ -57,14 +57,13 @@ class MapsecApp(App):
     #target_input {
         width: 100%;
         height: 3;
-        border: solid $accent;
     }
 
     #plugin_section {
         height: auto;
         padding: 1 2;
         margin: 0 0 1 0;
-        border: round $secondary;
+        border: tall $secondary;
     }
 
     #plugin_label {
@@ -128,13 +127,9 @@ class MapsecApp(App):
         height: 1;
     }
 
-    #results_section {
-        height: 1fr;
-        border: solid $accent;
-    }
-
     #results_scroll {
         height: 1fr;
+        border: tall $accent;
         padding: 1;
     }
 
@@ -374,20 +369,19 @@ class MapsecApp(App):
     def _log_info(self, message: str) -> None:
         """Write an info message to the log."""
         log = self.query_one("#results_scroll", VerticalScroll)
-        # We use a simple Static for log messages
-        widget = Static(f"[dim]ℹ[/] {message}")
+        widget = Static(f"[dim]>[/] {message}")
         log.mount(widget)
 
     def _log_success(self, message: str) -> None:
         """Write a success message to the log."""
         log = self.query_one("#results_scroll", VerticalScroll)
-        widget = Static(f"[bold green]✓[/] {message}")
+        widget = Static(f"[bold green]+[/] {message}")
         log.mount(widget)
 
     def _log_error(self, message: str) -> None:
         """Write an error message to the log."""
         log = self.query_one("#results_scroll", VerticalScroll)
-        widget = Static(f"[bold red]✗[/] {message}")
+        widget = Static(f"[bold red]![/] {message}")
         log.mount(widget)
 
 
