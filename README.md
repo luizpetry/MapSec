@@ -9,12 +9,13 @@ Modular mapping and security reconnaissance framework.
 - **VirusTotal integration** - Threat intelligence lookups
 - **DNS enumeration** - Record resolution and subdomain brute force
 - **Nmap integration** - Port scanning and service detection
+- **TUI interface** - Interactive terminal UI with progress tracking
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/luizpetry/MapSec.git
 cd mapsec
 
 # Install in development mode
@@ -32,6 +33,8 @@ pip install -e ".[dev]"
 
 ## Usage
 
+### CLI
+
 ```bash
 # Basic scan
 mapsec scan example.com
@@ -48,6 +51,18 @@ mapsec plugins
 # Show version
 mapsec version
 ```
+
+### TUI (Terminal User Interface)
+
+```bash
+# Launch interactive TUI
+mapsec-tui
+```
+
+**TUI Controls:**
+- `Enter` — Start scan
+- `Ctrl+Q` — Quit
+- `Ctrl+E` — Export results to JSON
 
 ## Configuration
 
@@ -90,9 +105,15 @@ mapsec/
 │   │   ├── nmap_scan.py    # Nmap wrapper
 │   │   ├── dns_enum.py     # DNS enumeration
 │   │   └── vt_lookup.py    # VirusTotal lookup
+│   ├── tui/
+│   │   ├── __init__.py
+│   │   ├── app.py          # Textual TUI application
+│   │   └── widgets.py      # Custom TUI widgets
 │   └── output/
 │       └── json_writer.py  # JSON output
 ├── pyproject.toml
+├── .env.example
+├── .gitignore
 └── README.md
 ```
 
