@@ -8,8 +8,8 @@ Modular mapping and security reconnaissance framework.
 - **Parallel execution** - Run multiple scans simultaneously
 - **VirusTotal integration** - Threat intelligence lookups
 - **DNS enumeration** - Record resolution and subdomain brute force
-- **Nmap integration** - Port scanning and service detection
-- **TUI interface** - Interactive terminal UI with progress tracking
+- **Port scanning** - Pure Python port scanner (no nmap required)
+- **GUI interface** - Modern graphical interface with tabbed results
 
 ## Installation
 
@@ -20,18 +20,28 @@ cd mapsec
 
 # Install in development mode
 pip install -e .
-
-# Or install with dev dependencies
-pip install -e ".[dev]"
 ```
 
 ## Requirements
 
 - Python 3.11+
-- nmap (for port scanning plugin)
 - VT_API_KEY environment variable (for VirusTotal plugin)
 
 ## Usage
+
+### GUI
+
+```bash
+# Launch graphical interface
+mapsec-gui
+```
+
+**GUI Features:**
+- Tabbed results display — one tab per plugin
+- Port scan results with service detection
+- DNS records organized by type (A, AAAA, MX, NS, TXT)
+- VirusTotal threat analysis with visual indicators
+- Export results to JSON
 
 ### CLI
 
@@ -52,26 +62,19 @@ mapsec plugins
 mapsec version
 ```
 
-### TUI (Terminal User Interface)
-
-```bash
-# Launch interactive TUI
-mapsec-tui
-```
-
-**TUI Controls:**
-- `Enter` — Start scan
-- `Ctrl+Q` — Quit
-- `Ctrl+E` — Export results to JSON
-
 ## Configuration
 
-### Environment Variables
+### VirusTotal API Key
 
-```bash
-# VirusTotal API key (required for vt plugin)
-export VT_API_KEY="your_api_key_here"
-```
+The VT plugin requires an API key. You can configure it via:
+
+1. **GUI**: Click "Settings" button → Enter your API key
+2. **Environment variable**:
+   ```bash
+   export VT_API_KEY="your_api_key_here"
+   ```
+
+Get a free key at [virustotal.com](https://www.virustotal.com/gui/join-us)
 
 ## Plugin Development
 
@@ -102,19 +105,32 @@ mapsec/
 │   │   ├── plugin.py       # Plugin base + registry
 │   │   └── models.py       # Pydantic models
 │   ├── plugins/
-│   │   ├── nmap_scan.py    # Nmap wrapper
+│   │   ├── nmap_scan.py    # Port scanner (pure Python)
 │   │   ├── dns_enum.py     # DNS enumeration
 │   │   └── vt_lookup.py    # VirusTotal lookup
-│   ├── tui/
+│   ├── gui/
 │   │   ├── __init__.py
-│   │   ├── app.py          # Textual TUI application
-│   │   └── widgets.py      # Custom TUI widgets
+│   │   ├── __main__.py
+│   │   ├── app.py          # GUI application
+│   │   └── results_panel.py # Tabbed results display
 │   └── output/
 │       └── json_writer.py  # JSON output
 ├── pyproject.toml
+├── mapsec.ico
+├── Mapsec.exe              # Standalone build
 ├── .env.example
 ├── .gitignore
 └── README.md
+```
+
+## Building Standalone Executable
+
+```bash
+# Install PyInstaller
+pip install pyinstaller
+
+# Build .exe
+pyinstaller --onefile --windowed --name "Mapsec" --icon mapsec.ico --add-data "mapsec.ico;." --collect-all customtkinter
 ```
 
 ## License

@@ -1,11 +1,11 @@
-"""VirusTotal lookup plugin."""
+"""VirusTotal lookup plugin — uses only Python standard library."""
 
 from __future__ import annotations
 
+import json
 import os
+import urllib.request
 from typing import Any
-
-import httpx
 
 from mapsec.core.plugin import BasePlugin, register_plugin
 
@@ -24,11 +24,10 @@ class VirusTotalPlugin(BasePlugin):
         """Look up target on VirusTotal."""
         if not self.api_key:
             return {
-                "error": "VT_API_KEY environment variable not set",
+                "error": "VT_API_KEY environment variable not set. Get a free key at https://www.virustotal.com/gui/join-us",
                 "target": target,
             }
 
-        # Determine if target is IP or domain
         if self._is_ip(target):
             return await self._lookup_ip(target)
         else:
@@ -36,63 +35,60 @@ class VirusTotalPlugin(BasePlugin):
 
     async def _lookup_ip(self, ip: str) -> dict[str, Any]:
         """Look up an IP address."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"https://www.virustotal.com/api/v3/ip_addresses/{ip}",
-                headers={"x-apikey": self.api_key},
-            )
-
-            if resp.status_code == 200:
-                data = resp.json()
-                attrs = data.get("data", {}).get("attributes", {})
-                return {
-                    "type": "ip",
-                    "target": ip,
-                    "malicious": attrs.get("last_analysis_stats", {}).get("malicious", 0),
-                    "suspicious": attrs.get("last_analysis_stats", {}).get("suspicious", 0),
-                    "harmless": attrs.get("last_analysis_stats", {}).get("harmless", 0),
-                    "total_votes": attrs.get("total_votes", {}),
-                    "asn": attrs.get("asn", ""),
-                    "as_owner": attrs.get("as_owner", ""),
-                    "country": attrs.get("country", ""),
-                    "network": attrs.get("network", ""),
-                }
-            else:
-                return {
-                    "type": "ip",
-                    "target": ip,
-                    "error": f"API returned status {resp.status_code}",
-                }
+        url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
+        return await self._api_request(url, "ip", ip)
 
     async def _lookup_domain(self, domain: str) -> dict[str, Any]:
         """Look up a domain."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"https://www.virustotal.com/api/v3/domains/{domain}",
-                headers={"x-apikey": self.api_key},
-            )
+        url = f"https://www.virustotal.com/api/v3/domains/{domain}"
+        return await self._api_request(url, "domain", domain)
 
-            if resp.status_code == 200:
-                data = resp.json()
-                attrs = data.get("data", {}).get("attributes", {})
-                return {
-                    "type": "domain",
-                    "target": domain,
-                    "malicious": attrs.get("last_analysis_stats", {}).get("malicious", 0),
-                    "suspicious": attrs.get("last_analysis_stats", {}).get("suspicious", 0),
-                    "harmless": attrs.get("last_analysis_stats", {}).get("harmless", 0),
-                    "total_votes": attrs.get("total_votes", {}),
-                    "registrar": attrs.get("registrar", ""),
-                    "creation_date": attrs.get("creation_date", ""),
-                    "popularity_ranks": attrs.get("popularity_ranks", {}),
-                    "categories": attrs.get("categories", {}),
-                }
-            else:
-                return {
-                    "type": "domain",
-                    "target": domain,
-                    "error": f"API returned status {resp.status_code}",
-                }
+    async def _api_request(self, url: str, type_name: str, target: str) -> dict[str, Any]:
+        """Make a VT API request using urllib (no httpx needed)."""
+        import asyncio
+
+        try:
+            result = await asyncio.to_thread(self._fetch_url, url)
+            data = json.loads(result)
+            attrs = data.get("data", {}).get("attributes", {})
+            stats = attrs.get("last_analysis_stats", {})
+
+            return {
+                "type": type_name,
+                "target": target,
+                "malicious": stats.get("malicious", 0),
+                "suspicious": stats.get("suspicious", 0),
+                "harmless": stats.get("harmless", 0),
+                "total_votes": attrs.get("total_votes", {}),
+                "registrar": attrs.get("registrar", ""),
+                "creation_date": attrs.get("creation_date", ""),
+                "categories": attrs.get("categories", {}),
+            }
+        except urllib.error.HTTPError as e:
+            return {
+                "type": type_name,
+                "target": target,
+                "error": f"API returned status {e.code}",
+            }
+        except Exception as e:
+            return {
+                "type": type_name,
+                "target": target,
+                "error": str(e),
+            }
+
+    def _fetch_url(self, url: str) -> str:
+        """Fetch URL content (blocking, runs in executor)."""
+        req = urllib.request.Request(
+            url,
+            headers={
+                "x-apikey": self.api_key,
+                "User-Agent": "Mapsec/0.1.0",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode()
 
     def _is_ip(self, target: str) -> bool:
         """Check if target is an IP address."""
@@ -103,4 +99,4 @@ class VirusTotalPlugin(BasePlugin):
 
     def validate_target(self, target: str) -> bool:
         """VT can look up both IPs and domains."""
-        return True  # Let the API handle validation
+        return True

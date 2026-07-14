@@ -1,115 +1,130 @@
-"""Nmap port scan plugin."""
+"""Port scan plugin — pure Python, no external tools required."""
 
 from __future__ import annotations
 
 import asyncio
-import re
-import xml.etree.ElementTree as ET
+import socket
+import struct
 from typing import Any
 
 from mapsec.core.plugin import BasePlugin, register_plugin
 
+# Common ports with service names
+COMMON_PORTS: dict[int, str] = {
+    21: "ftp",
+    22: "ssh",
+    23: "telnet",
+    25: "smtp",
+    53: "dns",
+    80: "http",
+    110: "pop3",
+    111: "rpcbind",
+    135: "msrpc",
+    139: "netbios-ssn",
+    143: "imap",
+    443: "https",
+    445: "microsoft-ds",
+    993: "imaps",
+    995: "pop3s",
+    1433: "mssql",
+    1521: "oracle",
+    2049: "nfs",
+    3306: "mysql",
+    3389: "ms-wbt-server",
+    5432: "postgresql",
+    5900: "vnc",
+    6379: "redis",
+    8080: "http-proxy",
+    8443: "https-alt",
+    8888: "sun-answerbook",
+    27017: "mongodb",
+}
+
 
 @register_plugin
 class NmapPlugin(BasePlugin):
-    """Port scanning plugin using nmap."""
+    """Port scanning plugin using pure Python sockets."""
 
     name = "nmap"
-    description = "Port scan and service detection via nmap"
+    description = "Port scan and service detection (pure Python)"
 
     async def run(self, target: str) -> dict[str, Any]:
-        """Execute nmap scan and parse XML output."""
-        cmd = [
-            "nmap",
-            "-sV",  # Service/version detection
-            "-oX",
-            "-",  # Output XML to stdout
-            "--open",  # Show only open ports
-            target,
-        ]
-
+        """Execute port scan against target."""
+        # Resolve target to IP
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
+            infos = socket.getaddrinfo(target, None, socket.AF_INET)
+            ip = infos[0][4][0] if infos else target
+        except socket.gaierror:
+            ip = target
 
-            if proc.returncode != 0:
-                raise RuntimeError(f"nmap failed: {stderr.decode()}")
+        # Scan common ports
+        open_ports = await self._scan_ports(ip, list(COMMON_PORTS.keys()))
 
-            return self._parse_xml(stdout.decode())
-        except FileNotFoundError:
-            raise RuntimeError("nmap is not installed or not in PATH")
-
-    def _parse_xml(self, xml_output: str) -> dict[str, Any]:
-        """Parse nmap XML output into structured data."""
-        root = ET.fromstring(xml_output)
-
+        # Build results
         hosts = []
-        for host in root.findall(".//host"):
-            # Get IP address
-            addr_elem = host.find("address[@addrtype='ipv4']")
-            ip = addr_elem.get("addr", "") if addr_elem is not None else ""
-
-            # Get hostname
-            hostname_elem = host.find(".//hostname")
-            hostname = hostname_elem.get("name", "") if hostname_elem is not None else ""
-
-            # Get ports
-            ports = []
-            for port_elem in host.findall(".//port"):
-                port_id = port_elem.get("portid", "")
-                protocol = port_elem.get("protocol", "")
-
-                state_elem = port_elem.find("state")
-                state = state_elem.get("state", "") if state_elem is not None else ""
-
-                service_elem = port_elem.find("service")
-                service_info = {}
-                if service_elem is not None:
-                    service_info = {
-                        "name": service_elem.get("name", ""),
-                        "product": service_elem.get("product", ""),
-                        "version": service_elem.get("version", ""),
-                        "extra_info": service_elem.get("extrainfo", ""),
-                    }
-
-                ports.append({
-                    "port": int(port_id) if port_id.isdigit() else port_id,
-                    "protocol": protocol,
-                    "state": state,
-                    "service": service_info,
-                })
-
-            hosts.append({
-                "ip": ip,
-                "hostname": hostname,
-                "ports": ports,
+        ports = []
+        for port_num in sorted(open_ports):
+            service = COMMON_PORTS.get(port_num, "unknown")
+            ports.append({
+                "port": port_num,
+                "protocol": "tcp",
+                "state": "open",
+                "service": {
+                    "name": service,
+                    "product": "",
+                    "version": "",
+                    "extra_info": "",
+                },
             })
 
-        # Get scan info
-        scan_info = {}
-        scan_info_elem = root.find("scaninfo")
-        if scan_info_elem is not None:
-            scan_info = {
-                "type": scan_info_elem.get("type", ""),
-                "protocol": scan_info_elem.get("protocol", ""),
-                "num_services": scan_info_elem.get("numservices", ""),
-            }
+        hosts.append({
+            "ip": ip,
+            "hostname": target if target != ip else "",
+            "ports": ports,
+        })
 
         return {
             "hosts": hosts,
-            "scan_info": scan_info,
+            "scan_info": {
+                "type": "tcp",
+                "protocol": "tcp",
+                "num_services": str(len(ports)),
+            },
             "total_hosts": len(hosts),
         }
 
+    async def _scan_ports(self, ip: str, ports: list[int]) -> list[int]:
+        """Scan a list of ports asynchronously."""
+        open_ports = []
+
+        async def check_port(port: int) -> int | None:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, port),
+                    timeout=1.5,
+                )
+                writer.close()
+                await writer.wait_closed()
+                return port
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+                return None
+
+        # Scan in batches of 50 for performance
+        batch_size = 50
+        for i in range(0, len(ports), batch_size):
+            batch = ports[i : i + batch_size]
+            tasks = [check_port(p) for p in batch]
+            results = await asyncio.gather(*tasks)
+            for r in results:
+                if r is not None:
+                    open_ports.append(r)
+
+        return open_ports
+
     def validate_target(self, target: str) -> bool:
         """Validate target is a valid IP or hostname."""
-        # Simple IPv4 pattern
-        ipv4_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
-        # Simple hostname pattern
-        hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
+        import re
 
+        ipv4_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
+        hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
         return bool(re.match(ipv4_pattern, target) or re.match(hostname_pattern, target))

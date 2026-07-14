@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from reconx.core.models import ScanReport
+from mapsec.core.models import ScanReport
 
 
 def write_json(report: ScanReport, output_path: str | Path) -> Path:

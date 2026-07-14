@@ -13,23 +13,21 @@ authors = [
     { name = "Luiz" }
 ]
 dependencies = [
-    "typer[all]>=0.9.0",
-    "httpx>=0.25.0",
+    "typer>=0.9.0",
     "pydantic>=2.0.0",
     "rich>=13.0.0",
-    "textual>=0.40.0",
+    "customtkinter>=5.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
-    "textual-dev>=1.0",
 ]
 
 [project.scripts]
 mapsec = "mapsec.cli:app"
-mapsec-tui = "mapsec.tui.app:main"
+mapsec-gui = "mapsec.gui.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mapsec"]
