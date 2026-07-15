@@ -228,7 +228,6 @@ class MapsecGUI(ctk.CTk):
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
-            check_color="#ffffff",
             corner_radius=4,
         )
         self._chk_nmap.pack(side="left", padx=(0, 20))
@@ -242,7 +241,6 @@ class MapsecGUI(ctk.CTk):
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
-            check_color="#ffffff",
             corner_radius=4,
         )
         self._chk_dns.pack(side="left", padx=(0, 20))
@@ -256,7 +254,6 @@ class MapsecGUI(ctk.CTk):
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
-            check_color="#ffffff",
             corner_radius=4,
         )
         self._chk_vt.pack(side="left", padx=(0, 20))
