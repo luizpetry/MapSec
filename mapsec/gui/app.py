@@ -336,8 +336,6 @@ class MapsecGUI(ctk.CTk):
             border_width=1,
             border_color=BORDER,
             corner_radius=8,
-            scrollbar_color=BG_ELEVATED,
-            scrollbar_hover_color=BORDER,
             wrap="word",
             state="disabled",
             height=100,
