@@ -568,16 +568,29 @@ class MapsecGUI(ctk.CTk):
 
     def _run_scan_thread(self, target: str, plugins: list[str]) -> None:
         """Execute scan in background thread (blocking)."""
+        import pathlib
+        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
+        def _dlog(msg):
+            from datetime import datetime as dt
+            with open(dbg, "a", encoding="utf-8") as f:
+                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
+
+        _dlog(f"Thread started: target={target}, plugins={plugins}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
+            _dlog("Calling _execute_scan...")
             report = loop.run_until_complete(self._execute_scan(target, plugins))
+            _dlog(f"Scan done, results={len(report.results)}, calling _on_scan_complete")
             self.after(0, self._on_scan_complete, report)
+            _dlog("self.after(_on_scan_complete) scheduled")
         except Exception as e:
+            _dlog(f"EXCEPTION: {e}")
             self.after(0, self._on_scan_error, str(e))
         finally:
             loop.close()
+            _dlog("Thread finished")
 
     async def _execute_scan(self, target: str, plugins: list[str]) -> ScanReport:
         """Execute plugins sequentially for progress tracking."""
@@ -647,6 +660,14 @@ class MapsecGUI(ctk.CTk):
 
     def _on_scan_complete(self, report: ScanReport) -> None:
         """Handle scan completion on the main thread."""
+        import pathlib
+        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
+        def _dlog(msg):
+            from datetime import datetime as dt
+            with open(dbg, "a", encoding="utf-8") as f:
+                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
+
+        _dlog(f"_on_scan_complete called: results={len(report.results)}")
         self._scan_report = report
         self._is_scanning = False
 
@@ -658,7 +679,14 @@ class MapsecGUI(ctk.CTk):
         total = len(report.results)
         self._progress_label.configure(text=f"Complete — {successful}/{total} succeeded")
 
-        self._render_results(report)
+        try:
+            _dlog("Calling _render_results...")
+            self._render_results(report)
+            _dlog("_render_results done")
+        except Exception as e:
+            _dlog(f"_render_results EXCEPTION: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _on_scan_error(self, error: str) -> None:
         """Handle scan error on the main thread."""
@@ -757,8 +785,27 @@ class MapsecGUI(ctk.CTk):
 
     def _render_results(self, report: ScanReport) -> None:
         """Render final scan results in the tabbed panel."""
+        import pathlib
+        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
+        def _dlog(msg):
+            from datetime import datetime as dt
+            with open(dbg, "a", encoding="utf-8") as f:
+                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
+
+        _dlog(f"_render_results: {len(report.results)} results")
+        for r in report.results:
+            _dlog(f"  plugin={r.plugin}, success={r.success}, data_keys={list(r.data.keys()) if r.data else 'None'}")
+
         results_dicts = [r.model_dump() for r in report.results]
-        self._results_panel.render(results_dicts)
+        _dlog(f"model_dump done: {len(results_dicts)} dicts")
+
+        try:
+            self._results_panel.render(results_dicts)
+            _dlog("results_panel.render() done")
+        except Exception as e:
+            _dlog(f"results_panel.render() EXCEPTION: {e}")
+            import traceback
+            traceback.print_exc()
 
         successful = sum(1 for r in report.results if r.success)
         total = len(report.results)

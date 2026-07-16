@@ -1,4 +1,4 @@
-"""Pydantic models for ReconX data structures."""
+"""Pydantic models for Mapsec data structures."""
 
 from __future__ import annotations
 

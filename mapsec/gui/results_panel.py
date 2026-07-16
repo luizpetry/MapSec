@@ -567,7 +567,6 @@ class ResultsPanel(ctk.CTkFrame):
             segmented_button_selected_color=PRIMARY,
             segmented_button_unselected_color=BG_SURFACE,
             segmented_button_selected_hover_color=PRIMARY_HOVER,
-            segmented_button_text_color=TEXT_SEC,
             text_color=TEXT,
         )
         self._tabview.pack(fill="both", expand=True, padx=6, pady=6)

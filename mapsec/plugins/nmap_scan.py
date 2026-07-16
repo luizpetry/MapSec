@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import socket
-import struct
 from typing import Any
 
 from mapsec.core.plugin import BasePlugin, register_plugin
@@ -123,8 +123,6 @@ class NmapPlugin(BasePlugin):
 
     def validate_target(self, target: str) -> bool:
         """Validate target is a valid IP or hostname."""
-        import re
-
         ipv4_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
         hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
         return bool(re.match(ipv4_pattern, target) or re.match(hostname_pattern, target))

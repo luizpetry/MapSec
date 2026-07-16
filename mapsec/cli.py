@@ -14,7 +14,7 @@ from rich.table import Table
 
 from mapsec import __version__
 from mapsec.core.engine import Engine
-from mapsec.core.models import ScanConfig
+from mapsec.core.models import ScanConfig, ScanReport
 
 # Import plugins to register them
 import mapsec.plugins.nmap_scan  # noqa: F401
@@ -76,7 +76,7 @@ def scan(
 
     # Run the engine
     engine = Engine()
-    report = asyncio.get_event_loop().run_until_complete(engine.run(config))
+    report = asyncio.run(engine.run(config))
 
     # Output results
     output_data = report.to_dict()

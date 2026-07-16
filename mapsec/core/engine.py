@@ -54,7 +54,7 @@ class Engine:
 
         for result in results:
             if isinstance(result, Exception):
-                logger.error(f"Plugin failed with exception: {result}")
+                logger.error("Plugin failed with exception: %s", result)
                 report.add_result(
                     PluginResult(
                         plugin="unknown",

@@ -139,5 +139,7 @@ class DnsPlugin(BasePlugin):
 
     def validate_target(self, target: str) -> bool:
         """Validate target is a valid domain."""
-        parts = target.split(".")
-        return len(parts) >= 2 and all(part.isalnum() or "-" in part for part in parts)
+        import re
+        # Must have at least 2 parts, each part alphanumeric/hyphen, not starting/ending with hyphen
+        domain_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$"
+        return bool(re.match(domain_pattern, target))
