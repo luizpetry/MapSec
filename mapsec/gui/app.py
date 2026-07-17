@@ -29,33 +29,41 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 # ─── Color Palette ──────────────────────────────────────────────
-BG_BASE       = "#0f1117"
-BG_SURFACE    = "#1a1d27"
-BG_ELEVATED   = "#252836"
-BG_INPUT      = "#141720"
-BORDER        = "#2d3142"
-BORDER_FOCUS  = "#6366f1"
-PRIMARY       = "#6366f1"
-PRIMARY_HOVER = "#818cf8"
-SUCCESS       = "#22c55e"
-SUCCESS_DIM   = "#16a34a"
-WARNING       = "#f59e0b"
-ERROR         = "#ef4444"
-ERROR_DIM     = "#dc2626"
-TEXT          = "#e2e8f0"
-TEXT_SEC      = "#cbd5e1"
-TEXT_MUTED    = "#94a3b8"
-TEXT_DIM      = "#64748b"
+BG_BASE       = "#0c0e14"
+BG_SURFACE    = "#161922"
+BG_ELEVATED   = "#1e2230"
+BG_INPUT      = "#111420"
+BORDER        = "#2a2e3e"
+BORDER_FOCUS  = "#7c7fff"
+PRIMARY       = "#6c63ff"
+PRIMARY_HOVER = "#8b84ff"
+PRIMARY_DIM   = "#4f48b2"
+SUCCESS       = "#34d399"
+SUCCESS_DIM   = "#10b981"
+WARNING       = "#fbbf24"
+WARNING_DIM   = "#f59e0b"
+ERROR         = "#f87171"
+ERROR_DIM     = "#ef4444"
+TEXT          = "#eef0f6"
+TEXT_SEC      = "#c4c9d8"
+TEXT_MUTED    = "#8890a4"
+TEXT_DIM      = "#555c72"
 NEUTRAL       = "#6b7280"
 NEUTRAL_HOVER = "#4b5563"
+ACCENT_CYAN   = "#22d3ee"
+ACCENT_PURPLE = "#a78bfa"
+ACCENT_PINK   = "#f472b6"
 
 # ─── Fonts ──────────────────────────────────────────────────────
-FONT_TITLE   = ("Segoe UI", 16, "bold")
-FONT_SECTION = ("Segoe UI", 13, "bold")
-FONT_BODY    = ("Segoe UI", 12)
-FONT_SMALL   = ("Segoe UI", 11)
-FONT_TINY    = ("Segoe UI", 10)
-FONT_CODE    = ("Consolas", 11)
+FONT_APP_TITLE = ("Segoe UI", 22, "bold")
+FONT_APP_SUB   = ("Segoe UI", 11)
+FONT_TITLE     = ("Segoe UI", 16, "bold")
+FONT_SECTION   = ("Segoe UI", 13, "bold")
+FONT_BODY      = ("Segoe UI", 12)
+FONT_SMALL     = ("Segoe UI", 11)
+FONT_TINY      = ("Segoe UI", 10)
+FONT_CODE      = ("Consolas", 11)
+FONT_CODE_SM   = ("Consolas", 10)
 
 # Config file path
 CONFIG_DIR = Path.home() / ".mapsec"
@@ -85,9 +93,9 @@ class MapsecGUI(ctk.CTk):
         super().__init__()
 
         # Window config
-        self.title("Mapsec — Security Reconnaissance")
-        self.geometry("900x700")
-        self.minsize(700, 500)
+        self.title("Mapsec \u2014 Security Reconnaissance")
+        self.geometry("920x720")
+        self.minsize(720, 520)
         self.configure(fg_color=BG_BASE)
 
         # Set window icon
@@ -117,52 +125,155 @@ class MapsecGUI(ctk.CTk):
         # Build UI
         self._build_ui()
 
+    # ══════════════════════════════════════════════════════════════
+    #  UI LAYOUT — Two-tab design
+    # ══════════════════════════════════════════════════════════════
+
     def _build_ui(self) -> None:
-        """Build the complete UI layout."""
+        """Build the complete two-tab UI layout."""
 
         # ── Main container ──────────────────────────────────────
         self._main_frame = ctk.CTkFrame(self, fg_color=BG_BASE)
-        self._main_frame.pack(fill="both", expand=True, padx=20, pady=16)
+        self._main_frame.pack(fill="both", expand=True, padx=24, pady=18)
 
-        # ── Sections ────────────────────────────────────────────
+        # ── Branding Header ─────────────────────────────────────
+        self._build_header()
+
+        # ── Tabview ─────────────────────────────────────────────
+        self._tabview = ctk.CTkTabview(
+            self._main_frame,
+            fg_color=BG_BASE,
+            corner_radius=10,
+            segmented_button_fg_color=BG_ELEVATED,
+            segmented_button_selected_color=PRIMARY,
+            segmented_button_unselected_color=BG_SURFACE,
+            segmented_button_selected_hover_color=PRIMARY_HOVER,
+            text_color=TEXT,
+        )
+        self._tabview.pack(fill="both", expand=True, pady=(0, 4))
+
+        # ── Scan Tab ────────────────────────────────────────────
+        self._scan_tab = self._tabview.add("Scan")
         self._build_target_section()
         self._build_middle_section()
-        self._build_results_section()
-        self._build_export_section()
+        self._build_activity_log_section()
+
+        # ── Results Tab ─────────────────────────────────────────
+        self._results_tab = self._tabview.add("Results")
+        self._build_results_tab()
+
+        # ── Version footer ──────────────────────────────────────
+        footer = ctk.CTkFrame(self._main_frame, fg_color="transparent")
+        footer.pack(fill="x")
+
+        self._version_label = ctk.CTkLabel(
+            footer, text="v0.1.0", font=FONT_TINY, text_color=TEXT_DIM,
+        )
+        self._version_label.pack(side="left")
+
+    # ── Header ──────────────────────────────────────────────────
+
+    def _build_header(self) -> None:
+        """Branded header with app title and accent line."""
+        header_wrapper = ctk.CTkFrame(self._main_frame, fg_color="transparent")
+        header_wrapper.pack(fill="x", pady=(0, 20))
+
+        # Accent line — thin gradient-like bar using stacked colored segments
+        accent_bar = ctk.CTkFrame(header_wrapper, fg_color="transparent", height=3)
+        accent_bar.pack(fill="x", pady=(0, 14))
+        accent_bar.pack_propagate(False)
+
+        segments = [
+            (PRIMARY, 0.35),
+            (ACCENT_PURPLE, 0.25),
+            (ACCENT_CYAN, 0.20),
+            (SUCCESS, 0.20),
+        ]
+        for color, weight in segments:
+            seg = ctk.CTkFrame(accent_bar, fg_color=color, corner_radius=0)
+            seg.pack(side="left", fill="both", expand=True, padx=(0, 1))
+
+        # Title row
+        title_row = ctk.CTkFrame(header_wrapper, fg_color="transparent")
+        title_row.pack(fill="x")
+
+        # App icon indicator — small colored square
+        icon_dot = ctk.CTkFrame(title_row, fg_color=PRIMARY, width=8, height=32, corner_radius=3)
+        icon_dot.pack(side="left", padx=(0, 12))
+        icon_dot.pack_propagate(False)
+
+        # App title
+        ctk.CTkLabel(
+            title_row,
+            text="Mapsec",
+            font=FONT_APP_TITLE,
+            text_color=TEXT,
+        ).pack(side="left")
+
+        # Version + subtitle
+        subtitle_frame = ctk.CTkFrame(title_row, fg_color="transparent")
+        subtitle_frame.pack(side="left", padx=(12, 0), pady=(4, 0))
+
+        ctk.CTkLabel(
+            subtitle_frame,
+            text="v0.1.0",
+            font=("Consolas", 10, "bold"),
+            text_color=PRIMARY_HOVER,
+            fg_color=BG_ELEVATED,
+            corner_radius=4,
+            width=42,
+            height=18,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            subtitle_frame,
+            text="Security Reconnaissance Toolkit",
+            font=FONT_SMALL,
+            text_color=TEXT_DIM,
+        ).pack(side="left", padx=(8, 0))
+
+    # ── Scan Tab — Target Section ───────────────────────────────
 
     def _build_target_section(self) -> None:
         """Target input and scan buttons."""
         frame = ctk.CTkFrame(
-            self._main_frame,
+            self._scan_tab,
             fg_color=BG_SURFACE,
             border_width=1,
             border_color=BORDER,
-            corner_radius=10,
+            corner_radius=12,
         )
-        frame.pack(fill="x", pady=(0, 12))
+        frame.pack(fill="x", pady=(0, 14))
 
-        # Section label
+        # Section label with icon feel
+        header_row = ctk.CTkFrame(frame, fg_color="transparent")
+        header_row.pack(fill="x", padx=20, pady=(16, 8))
+
+        section_dot = ctk.CTkFrame(header_row, fg_color=PRIMARY, width=4, height=16, corner_radius=2)
+        section_dot.pack(side="left", padx=(0, 8))
+        section_dot.pack_propagate(False)
+
         ctk.CTkLabel(
-            frame, text="Target", font=FONT_SECTION, text_color=TEXT,
-        ).pack(anchor="w", padx=16, pady=(12, 6))
+            header_row, text="Target", font=FONT_SECTION, text_color=TEXT,
+        ).pack(side="left")
 
         # Input row
         input_row = ctk.CTkFrame(frame, fg_color="transparent")
-        input_row.pack(fill="x", padx=16, pady=(0, 14))
+        input_row.pack(fill="x", padx=20, pady=(0, 18))
 
         self._target_entry = ctk.CTkEntry(
             input_row,
-            placeholder_text="e.g. example.com or 192.168.1.0/24",
+            placeholder_text="e.g. example.com  or  192.168.1.0/24",
             placeholder_text_color=TEXT_DIM,
-            height=40,
+            height=44,
             font=FONT_CODE,
             fg_color=BG_INPUT,
             border_width=1,
             border_color=BORDER,
             text_color=TEXT,
-            corner_radius=8,
+            corner_radius=10,
         )
-        self._target_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self._target_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
         self._target_entry.bind("<Return>", lambda e: self._start_scan())
         self._target_entry.bind(
             "<FocusIn>", lambda e: self._target_entry.configure(border_color=BORDER_FOCUS)
@@ -173,111 +284,132 @@ class MapsecGUI(ctk.CTk):
 
         self._scan_btn = ctk.CTkButton(
             input_row,
-            text="Scan",
-            width=100,
-            height=40,
-            font=FONT_SECTION,
+            text="\u25b6  Scan",
+            width=110,
+            height=44,
+            font=("Segoe UI", 13, "bold"),
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             text_color="#ffffff",
-            corner_radius=8,
+            corner_radius=10,
             command=self._start_scan,
         )
         self._scan_btn.pack(side="right")
 
         self._cancel_btn = ctk.CTkButton(
             input_row,
-            text="Cancel",
-            width=80,
-            height=40,
+            text="\u2715  Cancel",
+            width=95,
+            height=44,
             font=FONT_BODY,
             fg_color=ERROR,
             hover_color=ERROR_DIM,
             text_color="#ffffff",
-            corner_radius=8,
+            corner_radius=10,
             state="disabled",
             command=self._cancel_scan,
         )
-        self._cancel_btn.pack(side="right", padx=(0, 8))
+        self._cancel_btn.pack(side="right", padx=(0, 10))
+
+    # ── Scan Tab — Plugins & Progress Section ───────────────────
 
     def _build_middle_section(self) -> None:
         """Plugin selection and progress bar."""
         frame = ctk.CTkFrame(
-            self._main_frame,
+            self._scan_tab,
             fg_color=BG_SURFACE,
             border_width=1,
             border_color=BORDER,
-            corner_radius=10,
+            corner_radius=12,
         )
-        frame.pack(fill="x", pady=(0, 12))
+        frame.pack(fill="x", pady=(0, 14))
 
         # Plugins header
-        ctk.CTkLabel(
-            frame, text="Plugins", font=FONT_SECTION, text_color=TEXT,
-        ).pack(anchor="w", padx=16, pady=(12, 6))
+        header_row = ctk.CTkFrame(frame, fg_color="transparent")
+        header_row.pack(fill="x", padx=20, pady=(16, 8))
 
-        # Checkbox + settings row
-        option_row = ctk.CTkFrame(frame, fg_color="transparent")
-        option_row.pack(fill="x", padx=16, pady=(0, 12))
+        section_dot = ctk.CTkFrame(header_row, fg_color=ACCENT_PURPLE, width=4, height=16, corner_radius=2)
+        section_dot.pack(side="left", padx=(0, 8))
+        section_dot.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header_row, text="Plugins", font=FONT_SECTION, text_color=TEXT,
+        ).pack(side="left")
+
+        # Plugins in subtle card background
+        plugins_outer = ctk.CTkFrame(
+            frame,
+            fg_color=BG_ELEVATED,
+            border_width=1,
+            border_color=BORDER,
+            corner_radius=8,
+        )
+        plugins_outer.pack(fill="x", padx=20, pady=(0, 14))
+
+        option_row = ctk.CTkFrame(plugins_outer, fg_color="transparent")
+        option_row.pack(fill="x", padx=14, pady=10)
 
         self._chk_nmap = ctk.CTkCheckBox(
             option_row,
-            text="nmap — port scan",
+            text="\u2022 nmap \u2014 port scan",
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
             corner_radius=4,
+            checkmark_color="#ffffff",
         )
-        self._chk_nmap.pack(side="left", padx=(0, 20))
+        self._chk_nmap.pack(side="left", padx=(0, 24))
         self._chk_nmap.select()
 
         self._chk_dns = ctk.CTkCheckBox(
             option_row,
-            text="dns — enumeration",
+            text="\u2022 dns \u2014 enumeration",
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
             corner_radius=4,
+            checkmark_color="#ffffff",
         )
-        self._chk_dns.pack(side="left", padx=(0, 20))
+        self._chk_dns.pack(side="left", padx=(0, 24))
         self._chk_dns.select()
 
         self._chk_vt = ctk.CTkCheckBox(
             option_row,
-            text="vt — threat intel",
+            text="\u2022 vt \u2014 threat intel",
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             border_color=BORDER,
             corner_radius=4,
+            checkmark_color="#ffffff",
         )
-        self._chk_vt.pack(side="left", padx=(0, 20))
+        self._chk_vt.pack(side="left", padx=(0, 24))
         self._update_vt_status()
 
         self._settings_btn = ctk.CTkButton(
             option_row,
-            text="Settings",
-            width=90,
-            height=30,
+            text="\u2699  Settings",
+            width=100,
+            height=32,
             font=FONT_SMALL,
             fg_color="transparent",
             border_width=1,
             border_color=BORDER,
             hover_color=BG_ELEVATED,
             text_color=TEXT_MUTED,
-            corner_radius=6,
+            corner_radius=8,
             command=self._open_settings,
         )
         self._settings_btn.pack(side="right")
 
         # Progress area
         progress_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        progress_frame.pack(fill="x", padx=16, pady=(0, 6))
+        progress_frame.pack(fill="x", padx=20, pady=(0, 6))
 
         self._progress_label = ctk.CTkLabel(
             progress_frame, text="Ready", font=FONT_SMALL, text_color=TEXT_MUTED,
@@ -286,86 +418,154 @@ class MapsecGUI(ctk.CTk):
 
         self._progress_bar = ctk.CTkProgressBar(
             progress_frame,
-            height=6,
+            height=5,
             fg_color=BG_ELEVATED,
             progress_color=PRIMARY,
             corner_radius=3,
             border_width=0,
         )
-        self._progress_bar.pack(fill="x", pady=(6, 0))
+        self._progress_bar.pack(fill="x", pady=(8, 0))
         self._progress_bar.set(0)
 
         # Per-plugin status
         status_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        status_frame.pack(fill="x", padx=16, pady=(8, 12))
+        status_frame.pack(fill="x", padx=20, pady=(10, 16))
 
         self._status_nmap = ctk.CTkLabel(
-            status_frame, text="nmap", font=FONT_CODE, text_color=TEXT_DIM,
+            status_frame, text="\u25cb nmap", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
-        self._status_nmap.pack(side="left", padx=(0, 20))
+        self._status_nmap.pack(side="left", padx=(0, 24))
 
         self._status_dns = ctk.CTkLabel(
-            status_frame, text="dns", font=FONT_CODE, text_color=TEXT_DIM,
+            status_frame, text="\u25cb dns", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
-        self._status_dns.pack(side="left", padx=(0, 20))
+        self._status_dns.pack(side="left", padx=(0, 24))
 
         self._status_vt = ctk.CTkLabel(
-            status_frame, text="vt", font=FONT_CODE, text_color=TEXT_DIM,
+            status_frame, text="\u25cb vt", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_vt.pack(side="left")
 
-    def _build_results_section(self) -> None:
-        """Results area with tabbed plugin results and status log."""
-        ctk.CTkLabel(
-            self._main_frame, text="Results", font=FONT_SECTION, text_color=TEXT,
-        ).pack(anchor="w", pady=(0, 6))
+    # ── Scan Tab — Activity Log ─────────────────────────────────
 
-        self._results_panel = ResultsPanel(self._main_frame)
-        self._results_panel.pack(fill="both", expand=True, pady=(0, 12))
+    def _build_activity_log_section(self) -> None:
+        """Activity log showing scan progress messages."""
+        log_header = ctk.CTkFrame(self._scan_tab, fg_color="transparent")
+        log_header.pack(fill="x", pady=(0, 6))
 
-        # Status log
+        section_dot = ctk.CTkFrame(
+            log_header, fg_color=ACCENT_CYAN, width=4, height=16, corner_radius=2,
+        )
+        section_dot.pack(side="left", padx=(0, 8))
+        section_dot.pack_propagate(False)
+
         ctk.CTkLabel(
-            self._main_frame, text="Activity Log", font=FONT_SMALL, text_color=TEXT_MUTED,
-        ).pack(anchor="w", pady=(0, 4))
+            log_header, text="Activity Log", font=FONT_SECTION, text_color=TEXT,
+        ).pack(side="left")
 
         self._results_text = ctk.CTkTextbox(
-            self._main_frame,
+            self._scan_tab,
             font=FONT_CODE,
             fg_color=BG_INPUT,
             text_color=TEXT_MUTED,
             border_width=1,
             border_color=BORDER,
-            corner_radius=8,
+            corner_radius=10,
             wrap="word",
             state="disabled",
-            height=100,
+            height=120,
         )
         self._results_text.pack(fill="x")
 
-    def _build_export_section(self) -> None:
-        """Export button."""
-        frame = ctk.CTkFrame(self._main_frame, fg_color="transparent")
-        frame.pack(fill="x", pady=(10, 0))
+    # ── Results Tab ─────────────────────────────────────────────
+
+    def _build_results_tab(self) -> None:
+        """Build the Results tab with summary header, cards, and export."""
+
+        # ── Summary header card ─────────────────────────────────
+        summary_card = ctk.CTkFrame(
+            self._results_tab,
+            fg_color=BG_SURFACE,
+            border_width=1,
+            border_color=BORDER,
+            corner_radius=12,
+        )
+        summary_card.pack(fill="x", padx=0, pady=(0, 10))
+
+        summary_row = ctk.CTkFrame(summary_card, fg_color="transparent")
+        summary_row.pack(fill="x", padx=20, pady=16)
+
+        section_dot = ctk.CTkFrame(
+            summary_row, fg_color=ACCENT_CYAN, width=4, height=16, corner_radius=2,
+        )
+        section_dot.pack(side="left", padx=(0, 8))
+        section_dot.pack_propagate(False)
+
+        self._results_status_label = ctk.CTkLabel(
+            summary_row,
+            text="Results",
+            font=FONT_SECTION,
+            text_color=TEXT,
+        )
+        self._results_status_label.pack(side="left")
+
+        self._results_target_label = ctk.CTkLabel(
+            summary_row,
+            text="",
+            font=FONT_SMALL,
+            text_color=TEXT_MUTED,
+        )
+        self._results_target_label.pack(side="left", padx=(16, 0))
+
+        # ── Scrollable area for result cards ────────────────────
+        self._results_scroll = ctk.CTkScrollableFrame(
+            self._results_tab,
+            fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+        )
+        self._results_scroll.pack(fill="both", expand=True)
+
+        # ── Results panel (populated after scan) ────────────────
+        self._results_panel = ResultsPanel(
+            self._results_scroll,
+            on_rendered=self._on_results_rendered,
+        )
+        self._results_panel.pack(fill="x")
+
+        # ── Export button ───────────────────────────────────────
+        export_frame = ctk.CTkFrame(self._results_tab, fg_color="transparent")
+        export_frame.pack(fill="x", padx=0, pady=(10, 0))
 
         self._export_btn = ctk.CTkButton(
-            frame,
-            text="Export JSON",
-            width=120,
-            height=34,
-            font=FONT_BODY,
+            export_frame,
+            text="\u2b07  Export JSON",
+            width=140,
+            height=38,
+            font=("Segoe UI", 12, "bold"),
             fg_color=SUCCESS,
             hover_color=SUCCESS_DIM,
             text_color="#ffffff",
-            corner_radius=8,
+            corner_radius=10,
             state="disabled",
             command=self._export_results,
         )
         self._export_btn.pack(side="right")
 
-        self._version_label = ctk.CTkLabel(
-            frame, text="v0.1.0", font=FONT_TINY, text_color=TEXT_DIM,
+    def _on_results_rendered(self, info: dict[str, Any]) -> None:
+        """Callback fired after ResultsPanel finishes rendering cards."""
+        # Update summary header
+        successful = info.get("successful", 0)
+        total = info.get("total", 0)
+        target = info.get("target", "")
+        self._results_status_label.configure(
+            text=f"Scan complete \u2014 {successful}/{total} succeeded"
         )
-        self._version_label.pack(side="left")
+        self._results_target_label.configure(text=f"Target: {target}")
+
+        # Auto-switch to Results tab
+        self._tabview.set("Results")
 
     # ── Settings / VT API Key ──────────────────────────────────
 
@@ -374,26 +574,26 @@ class MapsecGUI(ctk.CTk):
         vt_key = self._config.get("vt_api_key", "")
         if vt_key:
             self._chk_vt.configure(text_color=SUCCESS)
-            masked = vt_key[:4] + "···" + vt_key[-4:] if len(vt_key) > 8 else "••••"
-            self._chk_vt.configure(text=f"vt — {masked}")
+            masked = vt_key[:4] + "\u00b7\u00b7\u00b7" + vt_key[-4:] if len(vt_key) > 8 else "\u2022\u2022\u2022\u2022"
+            self._chk_vt.configure(text=f"\u2022 vt \u2014 {masked}")
         else:
             self._chk_vt.configure(text_color=ERROR)
-            self._chk_vt.configure(text="vt — no API key")
+            self._chk_vt.configure(text="\u2022 vt \u2014 no API key")
             self._chk_vt.deselect()
 
     def _open_settings(self) -> None:
         """Open settings dialog for API key configuration."""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Settings")
-        dialog.geometry("450x280")
+        dialog.geometry("460x300")
         dialog.configure(fg_color=BG_BASE)
         dialog.transient(self)
         dialog.grab_set()
 
         # Center on parent
         dialog.update_idletasks()
-        x = self.winfo_x() + (self.winfo_width() - 450) // 2
-        y = self.winfo_y() + (self.winfo_height() - 280) // 2
+        x = self.winfo_x() + (self.winfo_width() - 460) // 2
+        y = self.winfo_y() + (self.winfo_height() - 300) // 2
         dialog.geometry(f"+{x}+{y}")
 
         # Dialog card
@@ -402,9 +602,13 @@ class MapsecGUI(ctk.CTk):
             fg_color=BG_SURFACE,
             border_width=1,
             border_color=BORDER,
-            corner_radius=12,
+            corner_radius=14,
         )
-        card.pack(fill="both", expand=True, padx=16, pady=16)
+        card.pack(fill="both", expand=True, padx=18, pady=18)
+
+        # Accent line in dialog
+        dialog_accent = ctk.CTkFrame(card, fg_color=PRIMARY, height=3, corner_radius=2)
+        dialog_accent.pack(fill="x", padx=18, pady=(18, 0))
 
         # Title
         ctk.CTkLabel(
@@ -416,27 +620,27 @@ class MapsecGUI(ctk.CTk):
             text="Configure integrations for enhanced scanning",
             font=FONT_SMALL,
             text_color=TEXT_MUTED,
-        ).pack(pady=(0, 16))
+        ).pack(pady=(0, 18))
 
         # VT API Key
         ctk.CTkLabel(
             card, text="VirusTotal API Key", font=FONT_BODY, text_color=TEXT_SEC,
-        ).pack(anchor="w", padx=20)
+        ).pack(anchor="w", padx=22)
 
         vt_entry = ctk.CTkEntry(
             card,
             placeholder_text="Paste your API key here",
-            width=380,
-            height=40,
+            width=390,
+            height=42,
             font=FONT_CODE,
             fg_color=BG_INPUT,
             border_width=1,
             border_color=BORDER,
             text_color=TEXT,
-            corner_radius=8,
-            show="•",
+            corner_radius=10,
+            show="\u2022",
         )
-        vt_entry.pack(padx=20, pady=(6, 4))
+        vt_entry.pack(padx=22, pady=(8, 4))
 
         # Pre-fill if key exists
         current_key = self._config.get("vt_api_key", "")
@@ -450,11 +654,11 @@ class MapsecGUI(ctk.CTk):
             font=FONT_TINY,
             text_color=TEXT_DIM,
         )
-        status_label.pack(anchor="w", padx=20, pady=(2, 0))
+        status_label.pack(anchor="w", padx=22, pady=(2, 0))
 
         # Buttons
         btn_frame = ctk.CTkFrame(card, fg_color="transparent")
-        btn_frame.pack(pady=(20, 20))
+        btn_frame.pack(pady=(22, 22))
 
         def save_key() -> None:
             key = vt_entry.get().strip()
@@ -481,41 +685,41 @@ class MapsecGUI(ctk.CTk):
         ctk.CTkButton(
             btn_frame,
             text="Save",
-            width=100,
-            height=34,
+            width=105,
+            height=36,
             font=FONT_BODY,
             fg_color=PRIMARY,
             hover_color=PRIMARY_HOVER,
             text_color="#ffffff",
-            corner_radius=8,
+            corner_radius=10,
             command=save_key,
-        ).pack(side="left", padx=(0, 8))
+        ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
             btn_frame,
             text="Clear",
-            width=80,
-            height=34,
+            width=85,
+            height=36,
             font=FONT_BODY,
             fg_color=ERROR,
             hover_color=ERROR_DIM,
             text_color="#ffffff",
-            corner_radius=8,
+            corner_radius=10,
             command=clear_key,
-        ).pack(side="left", padx=(0, 8))
+        ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
             btn_frame,
             text="Cancel",
-            width=80,
-            height=34,
+            width=85,
+            height=36,
             font=FONT_BODY,
             fg_color="transparent",
             border_width=1,
             border_color=BORDER,
             hover_color=BG_ELEVATED,
             text_color=TEXT_MUTED,
-            corner_radius=8,
+            corner_radius=10,
             command=dialog.destroy,
         ).pack(side="left")
 
@@ -549,9 +753,9 @@ class MapsecGUI(ctk.CTk):
             ("vt", self._status_vt),
         ]:
             if name in plugins:
-                label.configure(text=f"> {name}", text_color=WARNING)
+                label.configure(text=f"\u25b6 {name}", text_color=WARNING)
             else:
-                label.configure(text=f"  {name}", text_color=TEXT_DIM)
+                label.configure(text=f"\u25cb {name}", text_color=TEXT_DIM)
 
         # Clear results
         self._clear_results()
@@ -677,7 +881,7 @@ class MapsecGUI(ctk.CTk):
 
         successful = sum(1 for r in report.results if r.success)
         total = len(report.results)
-        self._progress_label.configure(text=f"Complete — {successful}/{total} succeeded")
+        self._progress_label.configure(text=f"Complete \u2014 {successful}/{total} succeeded")
 
         try:
             _dlog("Calling _render_results...")
@@ -754,11 +958,11 @@ class MapsecGUI(ctk.CTk):
             return
 
         if status == "running":
-            label.configure(text=f"> {name}", text_color=WARNING)
+            label.configure(text=f"\u25b6 {name}", text_color=WARNING)
         elif status == "success":
-            label.configure(text=f"+ {name} ({duration:.1f}s)", text_color=SUCCESS)
+            label.configure(text=f"\u2713 {name} ({duration:.1f}s)", text_color=SUCCESS)
         elif status == "failed":
-            label.configure(text=f"! {name}", text_color=ERROR)
+            label.configure(text=f"\u2717 {name}", text_color=ERROR)
 
     def _clear_results(self) -> None:
         """Clear the results panel and status log."""
@@ -775,13 +979,13 @@ class MapsecGUI(ctk.CTk):
         self._results_text.configure(state="disabled")
 
     def _log_info(self, msg: str) -> None:
-        self._append_result(f">  {msg}")
+        self._append_result(f"\u25cf  {msg}")
 
     def _log_success(self, msg: str) -> None:
-        self._append_result(f"+  {msg}")
+        self._append_result(f"\u2713  {msg}")
 
     def _log_error(self, msg: str) -> None:
-        self._append_result(f"!  {msg}")
+        self._append_result(f"\u2717  {msg}")
 
     def _render_results(self, report: ScanReport) -> None:
         """Render final scan results in the tabbed panel."""
@@ -809,7 +1013,7 @@ class MapsecGUI(ctk.CTk):
 
         successful = sum(1 for r in report.results if r.success)
         total = len(report.results)
-        self._log_success(f"Scan complete — {successful}/{total} plugins succeeded")
+        self._log_success(f"Scan complete \u2014 {successful}/{total} plugins succeeded")
 
 
 def main() -> None:
