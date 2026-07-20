@@ -810,6 +810,290 @@ class BannerTab(ctk.CTkScrollableFrame):
             ).pack(side="left", padx=(14, 0), fill="x", expand=True)
 
 
+# ─── SSL/TLS Tab ───────────────────────────────────────────────
+
+
+class SslTab(ctk.CTkScrollableFrame):
+    """Tab displaying SSL/TLS certificate and protocol analysis results."""
+
+    def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(
+            master,
+            fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+            **kwargs,
+        )
+
+        target = data.get("target", "")
+        port = data.get("port", 443)
+        cert = data.get("certificate", {})
+        protocol = data.get("protocol", {})
+        cipher = data.get("cipher", {})
+        warnings = data.get("warnings", [])
+
+        # Target header
+        ctk.CTkLabel(
+            self,
+            text=f"{target}:{port}",
+            font=("Segoe UI", 16, "bold"),
+            text_color=PRIMARY_HOVER,
+        ).pack(anchor="w", pady=(0, 16))
+
+        # Summary cards
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=(0, 16))
+        cards_frame.columnconfigure(0, weight=1)
+        cards_frame.columnconfigure(1, weight=1)
+        cards_frame.columnconfigure(2, weight=1)
+
+        proto_version = protocol.get("version", "?")
+        is_secure = protocol.get("is_secure", False)
+        proto_color = SUCCESS if is_secure else ERROR
+        ResultCard(
+            cards_frame, "PROTOCOL", proto_version, proto_color
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+        cipher_name = cipher.get("name", "?")
+        if len(cipher_name) > 20:
+            cipher_name = cipher_name[:18] + "..."
+        cipher_color = SUCCESS if not cipher.get("is_weak", False) else ERROR
+        ResultCard(
+            cards_frame, "CIPHER", cipher_name, cipher_color
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
+
+        days = cert.get("days_until_expiry", 0)
+        if days > 60:
+            expiry_color = SUCCESS
+        elif days > 14:
+            expiry_color = WARNING
+        else:
+            expiry_color = ERROR
+        ResultCard(
+            cards_frame, "EXPIRES", f"{days}d", expiry_color
+        ).grid(row=0, column=2, sticky="ew")
+
+        # Certificate details
+        if cert:
+            cert_header = ctk.CTkFrame(self, fg_color="transparent")
+            cert_header.pack(fill="x", pady=(12, 8))
+            dot = ctk.CTkFrame(cert_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(cert_header, text="Certificate", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+
+            fields = [
+                ("Issuer", cert.get("issuer", "--")),
+                ("Subject", cert.get("subject", "--")),
+                ("Valid From", cert.get("valid_from", "--")),
+                ("Valid Until", cert.get("valid_until", "--")),
+                ("Serial", cert.get("serial", "--")),
+            ]
+            for label, value in fields:
+                row = ctk.CTkFrame(self, fg_color=BG_SURFACE, corner_radius=8, height=36)
+                row.pack(fill="x", pady=2)
+                row.pack_propagate(False)
+                ctk.CTkLabel(
+                    row, text=label, font=FONT_CODE_SM, text_color=TEXT_MUTED, width=100,
+                ).pack(side="left", padx=(14, 0))
+                ctk.CTkLabel(
+                    row, text=value, font=FONT_CODE, text_color=TEXT_SEC,
+                ).pack(side="left", padx=(8, 0), fill="x", expand=True)
+
+            # SAN
+            san = cert.get("san", [])
+            if san:
+                san_header = ctk.CTkFrame(self, fg_color="transparent")
+                san_header.pack(fill="x", pady=(12, 6))
+                ctk.CTkLabel(san_header, text="Subject Alternative Names", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+                for name in san[:10]:
+                    ctk.CTkLabel(
+                        self, text=f"  {name}", font=FONT_CODE, text_color=ACCENT_CYAN,
+                    ).pack(anchor="w")
+
+            # Flags
+            flags_frame = ctk.CTkFrame(self, fg_color="transparent")
+            flags_frame.pack(fill="x", pady=(12, 0))
+            if cert.get("is_expired"):
+                ctk.CTkLabel(
+                    flags_frame, text="EXPIRED", font=FONT_BADGE,
+                    fg_color=ERROR, text_color="#ffffff", corner_radius=6,
+                    width=80, height=24,
+                ).pack(side="left", padx=(0, 8))
+            if cert.get("is_self_signed"):
+                ctk.CTkLabel(
+                    flags_frame, text="SELF-SIGNED", font=FONT_BADGE,
+                    fg_color=WARNING, text_color="#ffffff", corner_radius=6,
+                    width=100, height=24,
+                ).pack(side="left", padx=(0, 8))
+
+        # Weak protocols
+        weak = protocol.get("weak_protocols", [])
+        if weak:
+            weak_header = ctk.CTkFrame(self, fg_color="transparent")
+            weak_header.pack(fill="x", pady=(12, 6))
+            dot = ctk.CTkFrame(weak_header, fg_color=ERROR, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(weak_header, text="Weak Protocols Detected", font=FONT_SECTION, text_color=ERROR).pack(side="left")
+            for proto in weak:
+                ctk.CTkLabel(
+                    self, text=f"  {proto}", font=FONT_CODE, text_color=ERROR,
+                ).pack(anchor="w")
+
+        # Warnings
+        if warnings:
+            warn_header = ctk.CTkFrame(self, fg_color="transparent")
+            warn_header.pack(fill="x", pady=(12, 6))
+            dot = ctk.CTkFrame(warn_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(warn_header, text="Warnings", font=FONT_SECTION, text_color=WARNING).pack(side="left")
+            for w in warnings:
+                ctk.CTkLabel(
+                    self, text=f"  {w}", font=FONT_SMALL, text_color=WARNING,
+                ).pack(anchor="w")
+
+
+# ─── HTTP Headers Tab ──────────────────────────────────────────
+
+
+class HeadersTab(ctk.CTkScrollableFrame):
+    """Tab displaying HTTP security headers analysis results."""
+
+    def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(
+            master,
+            fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+            **kwargs,
+        )
+
+        target = data.get("target", "")
+        url = data.get("url", "")
+        status_code = data.get("status_code", 0)
+        headers = data.get("headers", {})
+        leaked = data.get("leaked_headers", {})
+        score_info = data.get("score", {})
+        warnings = data.get("warnings", [])
+
+        grade = score_info.get("grade", "?")
+        score_val = score_info.get("score", 0)
+
+        # Grade color
+        grade_colors = {"A": SUCCESS, "B": ACCENT_CYAN, "C": WARNING, "D": ERROR, "F": ERROR}
+        grade_color = grade_colors.get(grade, TEXT_MUTED)
+
+        # Target header
+        ctk.CTkLabel(
+            self,
+            text=url or target,
+            font=("Segoe UI", 16, "bold"),
+            text_color=PRIMARY_HOVER,
+        ).pack(anchor="w", pady=(0, 16))
+
+        # Summary cards
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=(0, 16))
+        cards_frame.columnconfigure(0, weight=1)
+        cards_frame.columnconfigure(1, weight=1)
+        cards_frame.columnconfigure(2, weight=1)
+
+        ResultCard(
+            cards_frame, "GRADE", grade, grade_color
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+        present_count = score_info.get("present_count", 0)
+        ResultCard(
+            cards_frame, "PRESENT", str(present_count), SUCCESS
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
+
+        missing_count = score_info.get("missing_count", 0)
+        ResultCard(
+            cards_frame, "MISSING", str(missing_count), ERROR if missing_count > 0 else SUCCESS
+        ).grid(row=0, column=2, sticky="ew")
+
+        # Headers list
+        if headers:
+            hdr_header = ctk.CTkFrame(self, fg_color="transparent")
+            hdr_header.pack(fill="x", pady=(12, 8))
+            dot = ctk.CTkFrame(hdr_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(hdr_header, text="Security Headers", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+
+            for name, info in headers.items():
+                present = info.get("present", False)
+                status = info.get("status", "missing")
+                value = info.get("value", "")
+
+                status_colors = {
+                    "good": SUCCESS,
+                    "present": SUCCESS,
+                    "weak": WARNING,
+                    "missing": ERROR,
+                    "bad": ERROR,
+                }
+                color = status_colors.get(status, TEXT_MUTED)
+
+                row = ctk.CTkFrame(self, fg_color=BG_SURFACE, corner_radius=8, height=36)
+                row.pack(fill="x", pady=2)
+                row.pack_propagate(False)
+
+                # Status dot
+                dot = ctk.CTkFrame(row, fg_color=color, width=8, height=8, corner_radius=4)
+                dot.pack(side="left", padx=(14, 8), pady=0)
+
+                # Header name
+                ctk.CTkLabel(
+                    row, text=name, font=FONT_CODE_SM, text_color=TEXT, width=220, anchor="w",
+                ).pack(side="left")
+
+                # Value or status
+                display = value if value else ("present" if present else "missing")
+                if len(display) > 40:
+                    display = display[:38] + "..."
+                ctk.CTkLabel(
+                    row, text=display, font=FONT_CODE, text_color=color,
+                ).pack(side="left", padx=(8, 0), fill="x", expand=True)
+
+        # Leaked headers
+        if leaked:
+            leak_header = ctk.CTkFrame(self, fg_color="transparent")
+            leak_header.pack(fill="x", pady=(12, 6))
+            dot = ctk.CTkFrame(leak_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(leak_header, text="Leaked Information", font=FONT_SECTION, text_color=WARNING).pack(side="left")
+
+            for name, value in leaked.items():
+                row = ctk.CTkFrame(self, fg_color=BG_SURFACE, corner_radius=8, height=36)
+                row.pack(fill="x", pady=2)
+                row.pack_propagate(False)
+                ctk.CTkLabel(
+                    row, text=name, font=FONT_CODE_SM, text_color=WARNING, width=160, anchor="w",
+                ).pack(side="left", padx=(14, 0))
+                ctk.CTkLabel(
+                    row, text=value, font=FONT_CODE, text_color=TEXT_SEC,
+                ).pack(side="left", padx=(8, 0), fill="x", expand=True)
+
+        # Warnings
+        if warnings:
+            warn_header = ctk.CTkFrame(self, fg_color="transparent")
+            warn_header.pack(fill="x", pady=(12, 6))
+            dot = ctk.CTkFrame(warn_header, fg_color=ERROR, width=4, height=14, corner_radius=2)
+            dot.pack(side="left", padx=(0, 8))
+            dot.pack_propagate(False)
+            ctk.CTkLabel(warn_header, text="Warnings", font=FONT_SECTION, text_color=ERROR).pack(side="left")
+            for w in warnings:
+                ctk.CTkLabel(
+                    self, text=f"  {w}", font=FONT_SMALL, text_color=ERROR,
+                ).pack(anchor="w")
+
+
 # ─── Expandable Result Card ─────────────────────────────────────
 
 
@@ -989,6 +1273,159 @@ class ResultsPanel(ctk.CTkFrame):
                 "target": target,
             })
 
+    def render_analysis(self, report: Any) -> None:
+        """Render analysis report as expandable findings cards."""
+        # Add an analysis card after the plugin result cards
+        analysis_card = ExpandableResultCard(
+            self,
+            plugin_name="Security Analysis",
+            summary_items=[
+                f"Score: {report.score}/100",
+                f"{len(report.findings)} findings",
+            ],
+            accent_color=SUCCESS if report.score >= 80 else WARNING if report.score >= 50 else ERROR,
+            detail_factory=lambda parent: self._build_analysis_detail(parent, report),
+        )
+        analysis_card.pack(fill="x", pady=(10, 0))
+        self._cards.append(analysis_card)
+
+        # Auto-expand the analysis card
+        analysis_card.toggle()
+
+    @staticmethod
+    def _build_analysis_detail(parent: Any, report: Any) -> ctk.CTkFrame:
+        """Build the detail widget for an analysis report."""
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="both", expand=True)
+
+        # Score header
+        score_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        score_frame.pack(fill="x", padx=12, pady=(8, 12))
+
+        score_color = SUCCESS if report.score >= 80 else WARNING if report.score >= 50 else ERROR
+        score_label = ctk.CTkLabel(
+            score_frame,
+            text=f"Score: {report.score}/100",
+            font=("Segoe UI", 20, "bold"),
+            text_color=score_color,
+        )
+        score_label.pack(side="left")
+
+        # Summary
+        ctk.CTkLabel(
+            frame,
+            text=report.summary,
+            font=FONT_SMALL,
+            text_color=TEXT_SEC,
+            wraplength=700,
+            justify="left",
+        ).pack(fill="x", padx=12, pady=(0, 12))
+
+        # Findings by severity
+        severity_order = ["critical", "high", "medium", "low", "info"]
+        severity_colors = {
+            "critical": ERROR,
+            "high": WARNING,
+            "medium": ACCENT_CYAN,
+            "low": TEXT_MUTED,
+            "info": TEXT_DIM,
+        }
+        severity_labels = {
+            "critical": "CRITICAL",
+            "high": "HIGH",
+            "medium": "MEDIUM",
+            "low": "LOW",
+            "info": "INFO",
+        }
+
+        for severity in severity_order:
+            findings = [f for f in report.findings if f.severity == severity]
+            if not findings:
+                continue
+
+            # Severity header
+            sev_frame = ctk.CTkFrame(frame, fg_color="transparent")
+            sev_frame.pack(fill="x", padx=12, pady=(8, 4))
+
+            sev_dot = ctk.CTkFrame(
+                sev_frame,
+                fg_color=severity_colors[severity],
+                width=8, height=8, corner_radius=4,
+            )
+            sev_dot.pack(side="left", padx=(0, 6))
+            sev_dot.pack_propagate(False)
+
+            ctk.CTkLabel(
+                sev_frame,
+                text=f"{severity_labels[severity]} ({len(findings)})",
+                font=FONT_CODE_B,
+                text_color=severity_colors[severity],
+            ).pack(side="left")
+
+            # Finding items
+            for finding in findings:
+                finding_frame = ctk.CTkFrame(
+                    frame,
+                    fg_color=BG_SURFACE,
+                    border_width=1,
+                    border_color=BORDER,
+                    corner_radius=8,
+                )
+                finding_frame.pack(fill="x", padx=12, pady=(0, 6))
+
+                # Title
+                ctk.CTkLabel(
+                    finding_frame,
+                    text=finding.title,
+                    font=FONT_CODE_B,
+                    text_color=TEXT,
+                    anchor="w",
+                ).pack(fill="x", padx=10, pady=(8, 2))
+
+                # Description
+                ctk.CTkLabel(
+                    finding_frame,
+                    text=finding.description,
+                    font=FONT_SMALL,
+                    text_color=TEXT_SEC,
+                    anchor="w",
+                    wraplength=680,
+                    justify="left",
+                ).pack(fill="x", padx=10)
+
+                # Recommendation
+                if finding.recommendation:
+                    rec_frame = ctk.CTkFrame(finding_frame, fg_color="transparent")
+                    rec_frame.pack(fill="x", padx=10, pady=(4, 8))
+
+                    ctk.CTkLabel(
+                        rec_frame,
+                        text="Recommendation: ",
+                        font=FONT_CODE_SM,
+                        text_color=TEXT_MUTED,
+                    ).pack(side="left")
+
+                    ctk.CTkLabel(
+                        rec_frame,
+                        text=finding.recommendation,
+                        font=FONT_CODE_SM,
+                        text_color=SUCCESS,
+                        wraplength=600,
+                        justify="left",
+                    ).pack(side="left")
+
+                # Source plugins
+                if finding.source_plugins:
+                    ctk.CTkLabel(
+                        finding_frame,
+                        text=f"Source: {', '.join(finding.source_plugins)}",
+                        font=FONT_TINY,
+                        text_color=TEXT_DIM,
+                        anchor="w",
+                    ).pack(fill="x", padx=10, pady=(0, 6))
+
+        return frame
+
     # ── Summary extraction ──────────────────────────────────────
 
     @staticmethod
@@ -1044,6 +1481,25 @@ class ResultsPanel(ctk.CTkFrame):
             banners = data.get("banners", [])
             return "Banners", [f"{len(banners)} services found"], WARNING
 
+        if plugin == "ssl":
+            cert = data.get("certificate", {})
+            protocol = data.get("protocol", {})
+            version = protocol.get("version", "?")
+            days = cert.get("days_until_expiry", 0)
+            items = [version]
+            if days:
+                items.append(f"{days}d until expiry")
+            return "SSL/TLS", items, ACCENT_CYAN
+
+        if plugin == "headers":
+            score_info = data.get("score", {})
+            grade = score_info.get("grade", "?")
+            missing = score_info.get("missing_count", 0)
+            items = [f"Grade {grade}"]
+            if missing:
+                items.append(f"{missing} missing")
+            return "Security Headers", items, ACCENT_PURPLE
+
         return plugin.capitalize(), ["\u2014"], TEXT_DIM
 
     # ── Detail widget factory ───────────────────────────────────
@@ -1068,6 +1524,10 @@ class ResultsPanel(ctk.CTkFrame):
                 return WhoisTab(parent, data)
             if plugin == "banner":
                 return BannerTab(parent, data)
+            if plugin == "ssl":
+                return SslTab(parent, data)
+            if plugin == "headers":
+                return HeadersTab(parent, data)
 
             return ctk.CTkLabel(
                 parent,

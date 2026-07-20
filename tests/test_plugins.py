@@ -1,4 +1,4 @@
-"""Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin."""
+"""Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin, SslCheckPlugin, HttpHeadersPlugin."""
 
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -8,6 +8,8 @@ from mapsec.plugins.nmap_scan import NmapPlugin
 from mapsec.plugins.dns_enum import DnsPlugin
 from mapsec.plugins.whois_lookup import WhoisPlugin
 from mapsec.plugins.banner_grab import BannerGrabPlugin
+from mapsec.plugins.ssl_check import SslCheckPlugin
+from mapsec.plugins.http_headers import HttpHeadersPlugin
 
 
 # ── NmapPlugin ────────────────────────────────────────────────────────────
@@ -420,3 +422,165 @@ class TestBannerGrabPluginRun:
             mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
             result = await plugin.run("10.0.0.1")
         assert result["total_banners"] == 0
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SslCheckPlugin Tests
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestSslCheckPlugin:
+    """Tests for the SslCheckPlugin."""
+
+    def test_registration(self):
+        from mapsec.core.plugin import get_plugins
+        assert "ssl" in get_plugins()
+
+    def test_validate_target_ip(self):
+        plugin = SslCheckPlugin()
+        assert plugin.validate_target("192.168.1.1") is True
+
+    def test_validate_target_hostname(self):
+        plugin = SslCheckPlugin()
+        assert plugin.validate_target("example.com") is True
+
+    def test_validate_target_invalid(self):
+        plugin = SslCheckPlugin()
+        assert plugin.validate_target("-invalid") is False
+
+    @pytest.mark.asyncio
+    async def test_run_connection_refused(self):
+        plugin = SslCheckPlugin()
+        with patch("mapsec.plugins.ssl_check.socket.create_connection", side_effect=ConnectionRefusedError):
+            result = await plugin.run("10.0.0.1")
+        assert "target" in result
+        assert "certificate" in result
+        assert "protocol" in result
+        assert "cipher" in result
+        assert "warnings" in result
+        assert len(result["warnings"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_run_successful_ssl(self):
+        plugin = SslCheckPlugin()
+        mock_cert = {
+            "subject": ((("commonName", "example.com"),),),
+            "issuer": ((("commonName", "Let's Encrypt"),),),
+            "notBefore": "Jan  1 00:00:00 2024 GMT",
+            "notAfter": "Dec 31 23:59:59 2024 GMT",
+            "serialNumber": "03AB",
+            "subjectAltName": (("DNS", "example.com"), ("DNS", "www.example.com")),
+        }
+        mock_ssock = Mock()
+        mock_ssock.getpeercert.return_value = mock_cert
+        mock_ssock.version.return_value = "TLSv1.3"
+        mock_ssock.cipher.return_value = ("TLS_AES_256_GCM_SHA384", 256, 256)
+        mock_ssock.__enter__ = Mock(return_value=mock_ssock)
+        mock_ssock.__exit__ = Mock(return_value=False)
+
+        with patch("mapsec.plugins.ssl_check.socket.create_connection"), \
+             patch("mapsec.plugins.ssl_check.ssl.SSLContext") as mock_ctx:
+            mock_ctx.return_value.wrap_socket.return_value = mock_ssock
+            result = await plugin.run("example.com")
+
+        assert result["target"] == "example.com"
+        assert result["protocol"]["version"] == "TLSv1.3"
+        assert result["cipher"]["name"] == "TLS_AES_256_GCM_SHA384"
+        assert result["cipher"]["bits"] == 256
+        assert result["certificate"]["subject"] == "example.com"
+        assert result["certificate"]["issuer"] == "Let's Encrypt"
+        assert "example.com" in result["certificate"]["san"]
+
+    @pytest.mark.asyncio
+    async def test_run_weak_protocol_detected(self):
+        plugin = SslCheckPlugin()
+        mock_cert = {
+            "subject": ((("commonName", "test.com"),),),
+            "issuer": ((("commonName", "Test CA"),),),
+            "notBefore": "Jan  1 00:00:00 2024 GMT",
+            "notAfter": "Dec 31 23:59:59 2099 GMT",
+        }
+        mock_ssock = Mock()
+        mock_ssock.getpeercert.return_value = mock_cert
+        mock_ssock.version.return_value = "TLSv1.2"
+        mock_ssock.cipher.return_value = ("AES256-SHA256", 256, 256)
+        mock_ssock.__enter__ = Mock(return_value=mock_ssock)
+        mock_ssock.__exit__ = Mock(return_value=False)
+
+        with patch("mapsec.plugins.ssl_check.socket.create_connection"), \
+             patch("mapsec.plugins.ssl_check.ssl.SSLContext") as mock_ctx:
+            mock_ctx.return_value.wrap_socket.return_value = mock_ssock
+
+            async def fake_weak(host, port):
+                return ["TLSv1"]
+            with patch.object(plugin, "_detect_weak_protocols", side_effect=fake_weak):
+                result = await plugin.run("test.com")
+
+        assert "TLSv1" in result["protocol"]["weak_protocols"]
+        assert any("weak protocol" in w.lower() for w in result["warnings"])
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HttpHeadersPlugin Tests
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestHttpHeadersPlugin:
+    """Tests for the HttpHeadersPlugin."""
+
+    def test_registration(self):
+        from mapsec.core.plugin import get_plugins
+        assert "headers" in get_plugins()
+
+    def test_validate_target_ip(self):
+        plugin = HttpHeadersPlugin()
+        assert plugin.validate_target("192.168.1.1") is True
+
+    def test_validate_target_hostname(self):
+        plugin = HttpHeadersPlugin()
+        assert plugin.validate_target("example.com") is True
+
+    def test_validate_target_invalid(self):
+        plugin = HttpHeadersPlugin()
+        assert plugin.validate_target("-bad") is False
+
+    @pytest.mark.asyncio
+    async def test_run_connection_error(self):
+        plugin = HttpHeadersPlugin()
+        with patch.object(plugin, "_fetch_headers", return_value=("", 0, {})):
+            result = await plugin.run("10.0.0.1")
+        assert "target" in result
+        assert "url" in result
+        assert result["status_code"] == 0
+        assert "headers" in result
+        assert "score" in result
+
+    @pytest.mark.asyncio
+    async def test_run_successful_with_headers(self):
+        plugin = HttpHeadersPlugin()
+        mock_headers = {
+            "strict-transport-security": "max-age=31536000",
+            "x-content-type-options": "nosniff",
+            "server": "nginx/1.18.0",
+        }
+        with patch.object(plugin, "_make_request", return_value=(200, mock_headers)):
+            result = await plugin.run("example.com")
+
+        assert result["target"] == "example.com"
+        assert result["status_code"] == 200
+        assert "score" in result
+        assert "grade" in result["score"]
+        assert result["score"]["grade"] in ("A", "B", "C", "D", "F")
+
+    @pytest.mark.asyncio
+    async def test_run_detects_leaked_headers(self):
+        plugin = HttpHeadersPlugin()
+        mock_headers = {
+            "server": "Apache/2.4.41",
+            "x-powered-by": "PHP/7.4",
+        }
+        with patch.object(plugin, "_make_request", return_value=(200, mock_headers)):
+            result = await plugin.run("example.com")
+
+        assert "Server" in result["leaked_headers"]
+        assert "X-Powered-By" in result["leaked_headers"]

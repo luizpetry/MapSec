@@ -17,6 +17,7 @@ import customtkinter as ctk
 
 from mapsec.core.engine import Engine
 from mapsec.core.models import PluginResult, ScanConfig, ScanReport
+from mapsec.analysis.engine import AnalysisEngine
 from mapsec.gui.results_panel import ResultsPanel
 
 # Import plugins to register them
@@ -25,6 +26,8 @@ import mapsec.plugins.dns_enum  # noqa: F401
 import mapsec.plugins.vt_lookup  # noqa: F401
 import mapsec.plugins.whois_lookup  # noqa: F401
 import mapsec.plugins.banner_grab  # noqa: F401
+import mapsec.plugins.ssl_check  # noqa: F401
+import mapsec.plugins.http_headers  # noqa: F401
 
 # ─── Theme ──────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -123,6 +126,14 @@ class MapsecGUI(ctk.CTk):
         self._scan_report: ScanReport | None = None
         self._is_scanning = False
         self._scan_thread: threading.Thread | None = None
+        self._analysis_engine = AnalysisEngine()
+
+        # Configure LLM from saved config
+        llm_provider = self._config.get("llm_provider", "")
+        llm_key = self._config.get("llm_api_key", "")
+        llm_model = self._config.get("llm_model", "")
+        if llm_provider and llm_key:
+            self._analysis_engine.configure_llm(llm_provider, llm_key, llm_model or None)
 
         # Build UI
         self._build_ui()
@@ -438,6 +449,32 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_banner.pack(side="left", padx=(0, 24))
 
+        self._chk_ssl = ctk.CTkCheckBox(
+            option_row2,
+            text="\u2022 ssl \u2014 certificate & protocols",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_ssl.pack(side="left", padx=(0, 24))
+
+        self._chk_headers = ctk.CTkCheckBox(
+            option_row2,
+            text="\u2022 headers \u2014 security headers",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_headers.pack(side="left", padx=(0, 24))
+
         # Progress area
         progress_frame = ctk.CTkFrame(frame, fg_color="transparent")
         progress_frame.pack(fill="x", padx=20, pady=(0, 6))
@@ -485,7 +522,17 @@ class MapsecGUI(ctk.CTk):
         self._status_banner = ctk.CTkLabel(
             status_frame, text="\u25cb banner", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
-        self._status_banner.pack(side="left")
+        self._status_banner.pack(side="left", padx=(0, 24))
+
+        self._status_ssl = ctk.CTkLabel(
+            status_frame, text="\u25cb ssl", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_ssl.pack(side="left", padx=(0, 24))
+
+        self._status_headers = ctk.CTkLabel(
+            status_frame, text="\u25cb headers", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_headers.pack(side="left")
 
     # ── Scan Tab — Activity Log ─────────────────────────────────
 
@@ -575,12 +622,27 @@ class MapsecGUI(ctk.CTk):
         )
         self._results_panel.pack(fill="x")
 
-        # ── Export button ───────────────────────────────────────
-        export_frame = ctk.CTkFrame(self._results_tab, fg_color="transparent")
-        export_frame.pack(fill="x", padx=0, pady=(10, 0))
+        # ── Action buttons ──────────────────────────────────────
+        action_frame = ctk.CTkFrame(self._results_tab, fg_color="transparent")
+        action_frame.pack(fill="x", padx=0, pady=(10, 0))
+
+        self._analyze_btn = ctk.CTkButton(
+            action_frame,
+            text="\U0001f50d  Analyze",
+            width=130,
+            height=38,
+            font=("Segoe UI", 12, "bold"),
+            fg_color=ACCENT_PURPLE,
+            hover_color="#8b6bff",
+            text_color="#ffffff",
+            corner_radius=10,
+            state="disabled",
+            command=self._start_analysis,
+        )
+        self._analyze_btn.pack(side="left")
 
         self._export_btn = ctk.CTkButton(
-            export_frame,
+            action_frame,
             text="\u2b07  Export JSON",
             width=140,
             height=38,
@@ -605,6 +667,9 @@ class MapsecGUI(ctk.CTk):
         )
         self._results_target_label.configure(text=f"Target: {target}")
 
+        # Enable Analyze button
+        self._analyze_btn.configure(state="normal")
+
         # Auto-switch to Results tab
         self._tabview.set("Results")
 
@@ -626,7 +691,7 @@ class MapsecGUI(ctk.CTk):
         """Open settings dialog for API key configuration."""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Settings")
-        dialog.geometry("460x300")
+        dialog.geometry("460x520")
         dialog.configure(fg_color=BG_BASE)
         dialog.transient(self)
         dialog.grab_set()
@@ -634,7 +699,7 @@ class MapsecGUI(ctk.CTk):
         # Center on parent
         dialog.update_idletasks()
         x = self.winfo_x() + (self.winfo_width() - 460) // 2
-        y = self.winfo_y() + (self.winfo_height() - 300) // 2
+        y = self.winfo_y() + (self.winfo_height() - 520) // 2
         dialog.geometry(f"+{x}+{y}")
 
         # Dialog card
@@ -653,26 +718,35 @@ class MapsecGUI(ctk.CTk):
 
         # Title
         ctk.CTkLabel(
-            card, text="API Key Configuration", font=FONT_TITLE, text_color=TEXT,
+            card, text="Configuration", font=FONT_TITLE, text_color=TEXT,
         ).pack(pady=(20, 4))
 
         ctk.CTkLabel(
             card,
-            text="Configure integrations for enhanced scanning",
+            text="API keys and integrations",
             font=FONT_SMALL,
             text_color=TEXT_MUTED,
-        ).pack(pady=(0, 18))
+        ).pack(pady=(0, 14))
 
-        # VT API Key
+        # Scrollable content
+        scroll = ctk.CTkScrollableFrame(
+            card, fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+        )
+        scroll.pack(fill="both", expand=True, padx=4)
+
+        # ── VT API Key ─────────────────────────────────────────
         ctk.CTkLabel(
-            card, text="VirusTotal API Key", font=FONT_BODY, text_color=TEXT_SEC,
-        ).pack(anchor="w", padx=22)
+            scroll, text="VirusTotal API Key", font=FONT_BODY, text_color=TEXT_SEC,
+        ).pack(anchor="w", padx=18)
 
         vt_entry = ctk.CTkEntry(
-            card,
+            scroll,
             placeholder_text="Paste your API key here",
-            width=390,
-            height=42,
+            width=370,
+            height=36,
             font=FONT_CODE,
             fg_color=BG_INPUT,
             border_width=1,
@@ -681,87 +755,177 @@ class MapsecGUI(ctk.CTk):
             corner_radius=10,
             show="\u2022",
         )
-        vt_entry.pack(padx=22, pady=(8, 4))
+        vt_entry.pack(padx=18, pady=(6, 2))
 
-        # Pre-fill if key exists
-        current_key = self._config.get("vt_api_key", "")
-        if current_key:
-            vt_entry.insert(0, current_key)
+        current_vt = self._config.get("vt_api_key", "")
+        if current_vt:
+            vt_entry.insert(0, current_vt)
 
-        # Status label
-        status_label = ctk.CTkLabel(
-            card,
-            text="Get a free key at virustotal.com",
-            font=FONT_TINY,
-            text_color=TEXT_DIM,
+        ctk.CTkLabel(
+            scroll, text="Get a free key at virustotal.com",
+            font=FONT_TINY, text_color=TEXT_DIM,
+        ).pack(anchor="w", padx=18, pady=(0, 10))
+
+        # ── Separator ──────────────────────────────────────────
+        ctk.CTkFrame(scroll, fg_color=BORDER, height=1).pack(
+            fill="x", padx=18, pady=(4, 10),
         )
-        status_label.pack(anchor="w", padx=22, pady=(2, 0))
 
-        # Buttons
-        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
-        btn_frame.pack(pady=(22, 22))
+        # ── LLM Provider ───────────────────────────────────────
+        ctk.CTkLabel(
+            scroll, text="LLM Analysis Provider (optional)",
+            font=FONT_BODY, text_color=TEXT_SEC,
+        ).pack(anchor="w", padx=18)
 
-        def save_key() -> None:
-            key = vt_entry.get().strip()
-            if key:
-                self._config["vt_api_key"] = key
-                os.environ["VT_API_KEY"] = key
+        ctk.CTkLabel(
+            scroll,
+            text="For deep security analysis with AI recommendations",
+            font=FONT_TINY, text_color=TEXT_DIM,
+        ).pack(anchor="w", padx=18, pady=(0, 6))
+
+        # Provider dropdown
+        provider_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        provider_frame.pack(fill="x", padx=18, pady=(0, 6))
+
+        ctk.CTkLabel(
+            provider_frame, text="Provider", font=FONT_SMALL, text_color=TEXT_MUTED,
+        ).pack(side="left")
+
+        provider_var = ctk.StringVar(value=self._config.get("llm_provider", "none"))
+        provider_menu = ctk.CTkOptionMenu(
+            provider_frame,
+            variable=provider_var,
+            values=["none", "claude", "gemini", "openai"],
+            width=140,
+            height=32,
+            font=FONT_SMALL,
+            fg_color=BG_INPUT,
+            button_color=BORDER,
+            button_hover_color=PRIMARY_DIM,
+            dropdown_fg_color=BG_ELEVATED,
+            dropdown_hover_color=PRIMARY_DIM,
+            corner_radius=8,
+        )
+        provider_menu.pack(side="right")
+
+        # Model entry
+        model_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        model_frame.pack(fill="x", padx=18, pady=(0, 6))
+
+        ctk.CTkLabel(
+            model_frame, text="Model (optional)", font=FONT_SMALL, text_color=TEXT_MUTED,
+        ).pack(side="left")
+
+        model_entry = ctk.CTkEntry(
+            model_frame,
+            placeholder_text="e.g. claude-sonnet-4-20250514",
+            width=220,
+            height=32,
+            font=FONT_CODE_SM,
+            fg_color=BG_INPUT,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            corner_radius=8,
+        )
+        model_entry.pack(side="right")
+        current_model = self._config.get("llm_model", "")
+        if current_model:
+            model_entry.insert(0, current_model)
+
+        # API Key entry
+        llm_key_entry = ctk.CTkEntry(
+            scroll,
+            placeholder_text="Paste your LLM API key here",
+            width=370,
+            height=36,
+            font=FONT_CODE,
+            fg_color=BG_INPUT,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            corner_radius=10,
+            show="\u2022",
+        )
+        llm_key_entry.pack(padx=18, pady=(6, 2))
+
+        current_llm_key = self._config.get("llm_api_key", "")
+        if current_llm_key:
+            llm_key_entry.insert(0, current_llm_key)
+
+        # ── Save / Cancel ──────────────────────────────────────
+        status_label = ctk.CTkLabel(
+            scroll, text="", font=FONT_TINY, text_color=SUCCESS,
+        )
+        status_label.pack(anchor="w", padx=18, pady=(8, 4))
+
+        btn_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        btn_frame.pack(pady=(10, 14))
+
+        def save_all() -> None:
+            # VT key
+            vt_val = vt_entry.get().strip()
+            if vt_val:
+                self._config["vt_api_key"] = vt_val
+                os.environ["VT_API_KEY"] = vt_val
             else:
                 self._config.pop("vt_api_key", None)
                 os.environ.pop("VT_API_KEY", None)
+
+            # LLM config
+            prov_val = provider_var.get()
+            llm_val = llm_key_entry.get().strip()
+            mdl_val = model_entry.get().strip()
+
+            if prov_val and prov_val != "none" and llm_val:
+                self._config["llm_provider"] = prov_val
+                self._config["llm_api_key"] = llm_val
+                self._config["llm_model"] = mdl_val
+                self._analysis_engine.configure_llm(
+                    prov_val, llm_val, mdl_val or None
+                )
+            else:
+                self._config.pop("llm_provider", None)
+                self._config.pop("llm_api_key", None)
+                self._config.pop("llm_model", None)
+                self._analysis_engine.configure_llm(None, None)
+
             save_config(self._config)
             self._update_vt_status()
             status_label.configure(text="Saved", text_color=SUCCESS)
             dialog.after(800, dialog.destroy)
 
-        def clear_key() -> None:
+        def clear_all() -> None:
             vt_entry.delete(0, "end")
-            self._config.pop("vt_api_key", None)
+            llm_key_entry.delete(0, "end")
+            model_entry.delete(0, "end")
+            provider_var.set("none")
+            for key in ("vt_api_key", "llm_provider", "llm_api_key", "llm_model"):
+                self._config.pop(key, None)
             os.environ.pop("VT_API_KEY", None)
             save_config(self._config)
             self._update_vt_status()
-            status_label.configure(text="API key removed", text_color=ERROR)
+            self._analysis_engine.configure_llm(None, None)
+            status_label.configure(text="All keys cleared", text_color=ERROR)
             dialog.after(800, dialog.destroy)
 
         ctk.CTkButton(
-            btn_frame,
-            text="Save",
-            width=105,
-            height=36,
-            font=FONT_BODY,
-            fg_color=PRIMARY,
-            hover_color=PRIMARY_HOVER,
-            text_color="#ffffff",
-            corner_radius=10,
-            command=save_key,
+            btn_frame, text="Save", width=105, height=36,
+            font=FONT_BODY, fg_color=PRIMARY, hover_color=PRIMARY_HOVER,
+            text_color="#ffffff", corner_radius=10, command=save_all,
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
-            btn_frame,
-            text="Clear",
-            width=85,
-            height=36,
-            font=FONT_BODY,
-            fg_color=ERROR,
-            hover_color=ERROR_DIM,
-            text_color="#ffffff",
-            corner_radius=10,
-            command=clear_key,
+            btn_frame, text="Clear All", width=85, height=36,
+            font=FONT_BODY, fg_color=ERROR, hover_color=ERROR_DIM,
+            text_color="#ffffff", corner_radius=10, command=clear_all,
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
-            btn_frame,
-            text="Cancel",
-            width=85,
-            height=36,
-            font=FONT_BODY,
-            fg_color="transparent",
-            border_width=1,
-            border_color=BORDER,
-            hover_color=BG_ELEVATED,
-            text_color=TEXT_MUTED,
-            corner_radius=10,
-            command=dialog.destroy,
+            btn_frame, text="Cancel", width=85, height=36,
+            font=FONT_BODY, fg_color="transparent", border_width=1,
+            border_color=BORDER, hover_color=BG_ELEVATED,
+            text_color=TEXT_MUTED, corner_radius=10, command=dialog.destroy,
         ).pack(side="left")
 
     # ── Actions ────────────────────────────────────────────────
@@ -951,6 +1115,62 @@ class MapsecGUI(ctk.CTk):
         self._progress_label.configure(text="Cancelled")
         self._log_error("Scan cancelled by user.")
 
+    def _start_analysis(self) -> None:
+        """Start security analysis of scan results."""
+        if not self._scan_report:
+            self._log_error("No scan results to analyze.")
+            return
+
+        self._analyze_btn.configure(state="disabled", text="\u23f3  Analyzing...")
+        self._log_info("Starting security analysis...")
+
+        thread = threading.Thread(target=self._run_analysis_thread, daemon=True)
+        thread.start()
+
+    def _run_analysis_thread(self) -> None:
+        """Run analysis in background thread."""
+        try:
+            # Build results dict from scan report
+            results: dict[str, Any] = {}
+            plugins_used: list[str] = []
+            for r in self._scan_report.results:
+                if r.success and r.data:
+                    results[r.plugin] = r.data
+                    plugins_used.append(r.plugin)
+
+            # Run analysis
+            report = self._analysis_engine.analyze(
+                results=results,
+                target=self._scan_report.target,
+                plugins_used=plugins_used,
+            )
+
+            # Update UI on main thread
+            self.after(0, self._on_analysis_complete, report)
+        except Exception as e:
+            self.after(0, self._on_analysis_error, str(e))
+
+    def _on_analysis_complete(self, report) -> None:
+        """Handle analysis completion on main thread."""
+        self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
+
+        # Render analysis results
+        self._results_panel.render_analysis(report)
+
+        # Log summary
+        self._log_success(
+            f"Analysis complete \u2014 Score: {report.score}/100 "
+            f"({len(report.findings)} findings)"
+        )
+
+        # Switch to Analysis tab
+        self._tabview.set("Results")
+
+    def _on_analysis_error(self, error: str) -> None:
+        """Handle analysis error on main thread."""
+        self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
+        self._log_error(f"Analysis failed: {error}")
+
     def _export_results(self) -> None:
         """Export scan results to JSON file via dialog."""
         if not self._scan_report:
@@ -989,6 +1209,10 @@ class MapsecGUI(ctk.CTk):
             plugins.append("whois")
         if self._chk_banner.get():
             plugins.append("banner")
+        if self._chk_ssl.get():
+            plugins.append("ssl")
+        if self._chk_headers.get():
+            plugins.append("headers")
         return plugins
 
     def _update_progress(self, pct: float, text: str) -> None:
