@@ -1172,17 +1172,20 @@ class ExpandableResultCard(ctk.CTkFrame):
         self._separator = ctk.CTkFrame(main_area, fg_color=BORDER, height=1)
         self._separator.pack_forget()
 
-        # ── Detail frame (hidden initially) ─────────────────────
-        self._detail_frame = ctk.CTkFrame(
+        # ── Detail frame (hidden initially, scrollable) ─────────
+        self._detail_frame = ctk.CTkScrollableFrame(
             main_area,
             fg_color=BG_ELEVATED,
             corner_radius=8,
             border_width=1,
             border_color=BORDER,
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=TEXT_MUTED,
         )
         self._detail_frame.pack_forget()
 
-        # Build detail content inside the frame
+        # Build detail content inside the scrollable frame
         detail_widget = detail_factory(self._detail_frame)
         detail_widget.pack(fill="both", expand=True, padx=6, pady=6)
 
