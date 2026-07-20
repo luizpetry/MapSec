@@ -408,7 +408,7 @@ class MapsecGUI(ctk.CTk):
 
         self._chk_banner = ctk.CTkCheckBox(
             option_row,
-            text="\u2022 banner \u2014 service banners",
+            text="\u2022 banner \u2014 identify services",
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
