@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from mapsec.analysis.models import Finding, AnalysisReport
-from mapsec.analysis.rules import run_rules, ALL_RULES
+from mapsec.analysis.rules import run_rules, ALL_RULES, _is_hsts_preloaded, _PRELOAD_CACHE
 from mapsec.analysis.engine import AnalysisEngine
 from mapsec.analysis.llm_providers import (
     get_provider,
@@ -165,15 +165,34 @@ class TestRules:
         """Detects missing HSTS header."""
         results = {
             "headers": {
+                "target": "example.com",
                 "headers": {
                     "Strict-Transport-Security": {"present": False},
                 }
             }
         }
-        findings = run_rules(results)
+        # Mock preload check to return False (domain not preloaded)
+        with patch("mapsec.analysis.rules._is_hsts_preloaded", return_value=False):
+            findings = run_rules(results)
         hsts = [f for f in findings if "HSTS" in f.title or "Strict-Transport-Security" in f.title]
         assert len(hsts) == 1
         assert hsts[0].severity == "medium"
+
+    def test_check_hsts_missing_preloaded_domain(self):
+        """Skips HSTS finding for preloaded domains (e.g. google.com)."""
+        results = {
+            "headers": {
+                "target": "google.com",
+                "headers": {
+                    "Strict-Transport-Security": {"present": False},
+                }
+            }
+        }
+        # Mock preload check to return True (domain IS preloaded)
+        with patch("mapsec.analysis.rules._is_hsts_preloaded", return_value=True):
+            findings = run_rules(results)
+        hsts = [f for f in findings if "HSTS" in f.title or "Strict-Transport-Security" in f.title]
+        assert len(hsts) == 0
 
     def test_check_csp_weak(self):
         """Detects unsafe-inline in CSP."""

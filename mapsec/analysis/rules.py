@@ -6,12 +6,55 @@ plugin data via ``.get()`` and early returns.
 """
 
 import datetime
+import json
 import logging
+import ssl
+import urllib.request
 from typing import Any, Callable
 
 from mapsec.analysis.models import Finding
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# HSTS Preload List (cached per session)
+# ---------------------------------------------------------------------------
+
+_PRELOAD_CACHE: set[str] | None = None
+_PRELOAD_URL = "https://chromium.googlesource.com/chromium/src/+/main/net/tools/transport_security_state_generator/preload_list_prediction.config?format=TEXT"
+
+
+def _is_hsts_preloaded(target: str) -> bool:
+    """Check if *target* is in the Chromium HSTS preload list.
+
+    The list is fetched once per session and cached in memory.  If the
+    fetch fails, the function conservatively returns ``False`` (treat as
+    not preloaded).
+    """
+    global _PRELOAD_CACHE  # noqa: PLW0603
+
+    if _PRELOAD_CACHE is None:
+        try:
+            ctx = ssl.create_default_context()
+            req = urllib.request.Request(_PRELOAD_URL, headers={"User-Agent": "Mapsec/0.1.0"})
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                import base64
+                raw = resp.read().decode("utf-8")
+                # The response is base64-encoded JSON
+                decoded = base64.b64decode(raw).decode("utf-8")
+                data = json.loads(decoded)
+                entries = data.get("entries", [])
+                _PRELOAD_CACHE = set()
+                for entry in entries:
+                    name = entry.get("name", "")
+                    if name:
+                        _PRELOAD_CACHE.add(name.lower())
+            logger.info("HSTS preload list loaded: %d entries", len(_PRELOAD_CACHE))
+        except Exception as e:
+            logger.warning("Failed to load HSTS preload list: %s", e)
+            _PRELOAD_CACHE = set()  # Empty set = nothing preloaded
+
+    return target.lower().strip(".") in _PRELOAD_CACHE
 
 # ---------------------------------------------------------------------------
 # Helper utilities
@@ -153,6 +196,11 @@ def check_hsts_missing(results: dict) -> list[Finding]:
     hdr_analysis = headers_data.get("headers", {})
     hsts = hdr_analysis.get("Strict-Transport-Security", {})
     if isinstance(hsts, dict) and hsts.get("present", False):
+        return []
+
+    # Check if domain is in the HSTS preload list (e.g. google.com, facebook.com)
+    target = headers_data.get("target", "")
+    if target and _is_hsts_preloaded(target):
         return []
 
     return [
