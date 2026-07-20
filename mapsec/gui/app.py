@@ -348,11 +348,11 @@ class MapsecGUI(ctk.CTk):
         )
         plugins_outer.pack(fill="x", padx=20, pady=(0, 14))
 
-        option_row = ctk.CTkFrame(plugins_outer, fg_color="transparent")
-        option_row.pack(fill="x", padx=14, pady=10)
+        option_row1 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
+        option_row1.pack(fill="x", padx=14, pady=(10, 0))
 
         self._chk_nmap = ctk.CTkCheckBox(
-            option_row,
+            option_row1,
             text="\u2022 nmap \u2014 port scan",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -366,7 +366,7 @@ class MapsecGUI(ctk.CTk):
         self._chk_nmap.select()
 
         self._chk_dns = ctk.CTkCheckBox(
-            option_row,
+            option_row1,
             text="\u2022 dns \u2014 enumeration",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -380,7 +380,7 @@ class MapsecGUI(ctk.CTk):
         self._chk_dns.select()
 
         self._chk_vt = ctk.CTkCheckBox(
-            option_row,
+            option_row1,
             text="\u2022 vt \u2014 threat intel",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -393,8 +393,11 @@ class MapsecGUI(ctk.CTk):
         self._chk_vt.pack(side="left", padx=(0, 24))
         self._update_vt_status()
 
+        option_row2 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
+        option_row2.pack(fill="x", padx=14, pady=(6, 10))
+
         self._chk_whois = ctk.CTkCheckBox(
-            option_row,
+            option_row2,
             text="\u2022 whois \u2014 registration info",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -407,7 +410,7 @@ class MapsecGUI(ctk.CTk):
         self._chk_whois.pack(side="left", padx=(0, 24))
 
         self._chk_banner = ctk.CTkCheckBox(
-            option_row,
+            option_row2,
             text="\u2022 banner \u2014 identify services",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -420,7 +423,7 @@ class MapsecGUI(ctk.CTk):
         self._chk_banner.pack(side="left", padx=(0, 24))
 
         self._settings_btn = ctk.CTkButton(
-            option_row,
+            option_row2,
             text="\u2699  Settings",
             width=100,
             height=32,
