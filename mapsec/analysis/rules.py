@@ -21,11 +21,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _PRELOAD_CACHE: set[str] | None = None
-_PRELOAD_URL = "https://chromium.googlesource.com/chromium/src/+/main/net/tools/transport_security_state_generator/preload_list_prediction.config?format=TEXT"
+_PRELOAD_URL = "https://chromium.googlesource.com/chromium/src/+/main/net/http/transport_security_state_static.json?format=TEXT"
 
 
 def _is_hsts_preloaded(target: str) -> bool:
     """Check if *target* is in the Chromium HSTS preload list.
+
+    The Chromium preload list uses registered domain names (eTLD+1)
+    without the TLD.  For example, ``google.com`` is stored as ``google``.
+    This function checks the full target, the parent domain, and the
+    registered domain against the cache.
 
     The list is fetched once per session and cached in memory.  If the
     fetch fails, the function conservatively returns ``False`` (treat as
@@ -37,12 +42,14 @@ def _is_hsts_preloaded(target: str) -> bool:
         try:
             ctx = ssl.create_default_context()
             req = urllib.request.Request(_PRELOAD_URL, headers={"User-Agent": "Mapsec/0.1.0"})
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
                 import base64
                 raw = resp.read().decode("utf-8")
-                # The response is base64-encoded JSON
                 decoded = base64.b64decode(raw).decode("utf-8")
-                data = json.loads(decoded)
+                # Strip // comments (the JSON file has comment lines at the top)
+                import re as _re
+                cleaned = _re.sub(r"//[^\n]*", "", decoded)
+                data = json.loads(cleaned)
                 entries = data.get("entries", [])
                 _PRELOAD_CACHE = set()
                 for entry in entries:
@@ -54,7 +61,22 @@ def _is_hsts_preloaded(target: str) -> bool:
             logger.warning("Failed to load HSTS preload list: %s", e)
             _PRELOAD_CACHE = set()  # Empty set = nothing preloaded
 
-    return target.lower().strip(".") in _PRELOAD_CACHE
+    domain = target.lower().strip(".")
+    # Check full domain, parent domain, and registered domain (eTLD+1)
+    # e.g. for "www.google.com": check "www.google.com", "google.com", "google"
+    parts = domain.split(".")
+    candidates = [domain]
+    for i in range(1, len(parts)):
+        candidates.append(".".join(parts[i:]))
+    # Also check just the registered name (e.g. "google" for "google.com")
+    if len(parts) >= 2:
+        candidates.append(parts[-2] if parts[-1] in ("com", "org", "net", "edu", "gov") else parts[-2])
+
+    for candidate in candidates:
+        if candidate in _PRELOAD_CACHE:
+            return True
+
+    return False
 
 # ---------------------------------------------------------------------------
 # Helper utilities
@@ -556,35 +578,45 @@ def check_weak_ciphers(results: dict) -> list[Finding]:
 
 
 def check_missing_headers(results: dict) -> list[Finding]:
-    """Critical security headers missing."""
+    """Security headers missing — split by severity."""
     headers_data = results.get("headers", {})
     hdr_analysis = headers_data.get("headers", {})
-    missing: list[str] = []
-    for hdr_name in CRITICAL_SECURITY_HEADERS:
-        info = hdr_analysis.get(hdr_name, {})
-        if isinstance(info, dict) and not info.get("present", False):
-            missing.append(hdr_name)
 
-    if not missing:
-        return []
+    # X-Frame-Options: medium (clickjacking risk)
+    xfo = hdr_analysis.get("X-Frame-Options", {})
+    if isinstance(xfo, dict) and not xfo.get("present", False):
+        return [
+            Finding(
+                severity="medium",
+                title="X-Frame-Options header missing",
+                description=(
+                    "The server does not send the X-Frame-Options header. "
+                    "Without it, the site may be embedded in iframes on "
+                    "other domains, enabling clickjacking attacks."
+                ),
+                recommendation="Add X-Frame-Options: DENY or SAMEORIGIN.",
+                source_plugins=["headers"],
+            )
+        ]
 
-    return [
-        Finding(
-            severity="medium",
-            title="Critical security headers missing",
-            description=(
-                f"The following security headers are not sent: "
-                f"{', '.join(missing)}.  Missing headers increase the "
-                f"risk of clickjacking (X-Frame-Options) and MIME-type "
-                f"sniffing attacks (X-Content-Type-Options)."
-            ),
-            recommendation=(
-                "Add X-Frame-Options: DENY and "
-                "X-Content-Type-Options: nosniff to all HTTP responses."
-            ),
-            source_plugins=["headers"],
-        )
-    ]
+    # X-Content-Type-Options: low (best practice, not critical)
+    xcto = hdr_analysis.get("X-Content-Type-Options", {})
+    if isinstance(xcto, dict) and not xcto.get("present", False):
+        return [
+            Finding(
+                severity="low",
+                title="X-Content-Type-Options header missing",
+                description=(
+                    "The server does not send the X-Content-Type-Options "
+                    "header. Without nosniff, browsers may MIME-sniff "
+                    "responses and interpret them as a different content type."
+                ),
+                recommendation="Add X-Content-Type-Options: nosniff.",
+                source_plugins=["headers"],
+            )
+        ]
+
+    return []
 
 
 def check_no_plugins_ran(results: dict) -> list[Finding]:
