@@ -20,6 +20,8 @@ from mapsec.core.models import ScanConfig, ScanReport
 import mapsec.plugins.nmap_scan  # noqa: F401
 import mapsec.plugins.dns_enum  # noqa: F401
 import mapsec.plugins.vt_lookup  # noqa: F401
+import mapsec.plugins.whois_lookup  # noqa: F401
+import mapsec.plugins.banner_grab  # noqa: F401
 
 app = typer.Typer(
     name="mapsec",

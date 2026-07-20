@@ -1,0 +1,422 @@
+"""Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin."""
+
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from mapsec.plugins.nmap_scan import NmapPlugin
+from mapsec.plugins.dns_enum import DnsPlugin
+from mapsec.plugins.whois_lookup import WhoisPlugin
+from mapsec.plugins.banner_grab import BannerGrabPlugin
+
+
+# ── NmapPlugin ────────────────────────────────────────────────────────────
+
+
+class TestNmapPluginValidateTarget:
+    """Tests for NmapPlugin.validate_target()."""
+
+    def test_accepts_valid_ipv4(self):
+        """validate_target returns True for valid IPv4 addresses."""
+        plugin = NmapPlugin()
+        for ip in ["192.168.1.1", "10.0.0.1", "8.8.8.8", "0.0.0.0", "255.255.255.255"]:
+            assert plugin.validate_target(ip) is True, f"Should accept {ip}"
+
+    def test_accepts_valid_hostnames(self):
+        """validate_target returns True for valid hostnames."""
+        plugin = NmapPlugin()
+        for hostname in ["localhost", "example.com", "my-host.com", "test.local", "a.b"]:
+            assert plugin.validate_target(hostname) is True, f"Should accept {hostname}"
+
+    def test_rejects_empty_string(self):
+        """validate_target returns False for empty string."""
+        plugin = NmapPlugin()
+        assert plugin.validate_target("") is False
+
+    def test_rejects_whitespace_only(self):
+        """validate_target returns False for whitespace-only strings."""
+        plugin = NmapPlugin()
+        assert plugin.validate_target("   ") is False
+
+    def test_rejects_special_characters(self):
+        """validate_target returns False for strings with special characters."""
+        plugin = NmapPlugin()
+        assert plugin.validate_target("!@#$%") is False
+        assert plugin.validate_target("example.com!") is False
+
+    def test_rejects_invalid_ip_format(self):
+        """validate_target returns False for strings that don't match IP or hostname patterns."""
+        plugin = NmapPlugin()
+        # IP with trailing dot (no final digit group)
+        assert plugin.validate_target("1.2.3.") is False
+        # All dots — no digits to match
+        assert plugin.validate_target("....") is False
+        # String starting with dot (invalid hostname start)
+        assert plugin.validate_target(".hidden") is False
+        # Double dot — invalid hostname pattern
+        assert plugin.validate_target("test..com") is False
+
+    def test_accepts_single_word_hostname(self):
+        """validate_target returns True for a single-word hostname."""
+        plugin = NmapPlugin()
+        assert plugin.validate_target("localhost") is True
+
+    def test_accepts_hostname_with_numbers(self):
+        """validate_target returns True for hostnames containing digits."""
+        plugin = NmapPlugin()
+        assert plugin.validate_target("server01.example.com") is True
+
+
+@pytest.mark.asyncio
+class TestNmapPluginRun:
+    """Tests for NmapPlugin.run()."""
+
+    async def test_run_returns_dict_with_hosts_key(self):
+        """run() returns a dictionary containing the 'hosts' key."""
+        plugin = NmapPlugin()
+        with (
+            patch("mapsec.plugins.nmap_scan.socket.getaddrinfo") as mock_gai,
+            patch("mapsec.plugins.nmap_scan.asyncio.open_connection") as mock_conn,
+        ):
+            # getaddrinfo returns [(family, type, proto, canonname, sockaddr)]
+            mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+            # No ports open → asyncio.open_connection raises
+            mock_conn.side_effect = ConnectionRefusedError()
+
+            result = await plugin.run("example.com")
+
+        assert "hosts" in result
+        assert isinstance(result["hosts"], list)
+
+    async def test_run_returns_scan_info(self):
+        """run() returns a dictionary containing scan_info."""
+        plugin = NmapPlugin()
+        with (
+            patch("mapsec.plugins.nmap_scan.socket.getaddrinfo") as mock_gai,
+            patch("mapsec.plugins.nmap_scan.asyncio.open_connection") as mock_conn,
+        ):
+            mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+            mock_conn.side_effect = ConnectionRefusedError()
+
+            result = await plugin.run("example.com")
+
+        assert "scan_info" in result
+
+    async def test_run_reports_no_open_ports(self):
+        """run() returns empty ports list when no ports are open."""
+        plugin = NmapPlugin()
+        with (
+            patch("mapsec.plugins.nmap_scan.socket.getaddrinfo") as mock_gai,
+            patch("mapsec.plugins.nmap_scan.asyncio.open_connection") as mock_conn,
+        ):
+            mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+            mock_conn.side_effect = ConnectionRefusedError()
+
+            result = await plugin.run("10.0.0.1")
+
+        assert result["hosts"][0]["ports"] == []
+
+    async def test_run_includes_resolved_ip(self):
+        """run() includes the resolved IP address in the host entry."""
+        plugin = NmapPlugin()
+        with (
+            patch("mapsec.plugins.nmap_scan.socket.getaddrinfo") as mock_gai,
+            patch("mapsec.plugins.nmap_scan.asyncio.open_connection") as mock_conn,
+        ):
+            mock_gai.return_value = [(2, 1, 6, "", ("192.0.2.1", 0))]
+            mock_conn.side_effect = ConnectionRefusedError()
+
+            result = await plugin.run("example.com")
+
+        assert result["hosts"][0]["ip"] == "192.0.2.1"
+
+    async def test_run_detects_open_port(self):
+        """run() reports a port as open when the connection succeeds."""
+        plugin = NmapPlugin()
+        with (
+            patch("mapsec.plugins.nmap_scan.socket.getaddrinfo") as mock_gai,
+            patch("mapsec.plugins.nmap_scan.asyncio.open_connection") as mock_conn,
+        ):
+            mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+            # Simulate port 80 being open
+            # Use Mock (not AsyncMock) for writer — close() is sync in real code
+            mock_writer = Mock()
+            mock_writer.close = Mock()
+            mock_writer.wait_closed = AsyncMock()
+            # Make only port 80 succeed; everything else fails
+            async def _open_connection(host, port):
+                if port == 80:
+                    return (Mock(), mock_writer)
+                raise ConnectionRefusedError()
+            mock_conn.side_effect = _open_connection
+
+            result = await plugin.run("10.0.0.1")
+
+        ports = result["hosts"][0]["ports"]
+        assert len(ports) == 1
+        assert ports[0]["port"] == 80
+        assert ports[0]["state"] == "open"
+        assert ports[0]["service"]["name"] == "http"
+
+
+# ── DnsPlugin ─────────────────────────────────────────────────────────────
+
+
+class TestDnsPluginValidateTarget:
+    """Tests for DnsPlugin.validate_target()."""
+
+    def test_accepts_valid_domains(self):
+        """validate_target returns True for valid domain names."""
+        plugin = DnsPlugin()
+        for domain in ["example.com", "sub.example.com", "my-host.com", "test.co.uk", "a.b.c.org"]:
+            assert plugin.validate_target(domain) is True, f"Should accept {domain}"
+
+    def test_rejects_empty_string(self):
+        """validate_target returns False for empty string."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target("") is False
+
+    def test_rejects_whitespace_only(self):
+        """validate_target returns False for whitespace-only strings."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target("   ") is False
+
+    def test_rejects_single_word_no_dot(self):
+        """validate_target returns False for a single word without a dot."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target("localhost") is False
+        assert plugin.validate_target("notadomain") is False
+
+    def test_rejects_special_characters(self):
+        """validate_target returns False for strings with invalid characters."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target("exam ple.com") is False
+        assert plugin.validate_target("example!.com") is False
+        assert plugin.validate_target("@example.com") is False
+
+    def test_rejects_strings_without_letter_start(self):
+        """validate_target returns False if the domain does not start with an alphanumeric."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target(".com") is False
+        assert plugin.validate_target("-example.com") is False
+
+    def test_rejects_trailing_dot(self):
+        """validate_target returns False for domains with a trailing dot."""
+        plugin = DnsPlugin()
+        assert plugin.validate_target("example.com.") is False
+
+
+@pytest.mark.asyncio
+class TestDnsPluginRun:
+    """Tests for DnsPlugin.run()."""
+
+    async def test_run_returns_dict_with_required_keys(self):
+        """run() returns a dict containing domain, records, and subdomains."""
+        plugin = DnsPlugin()
+        with (
+            patch("mapsec.plugins.dns_enum.socket.getaddrinfo") as mock_gai,
+            patch.object(plugin, "_resolve_mx", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_ns", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_txt", AsyncMock(return_value=[])),
+        ):
+            # getaddrinfo for A record
+            mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+            result = await plugin.run("example.com")
+
+        assert "domain" in result
+        assert "records" in result
+        assert "subdomains" in result
+        assert result["domain"] == "example.com"
+
+    async def test_run_returns_records_with_a_address(self):
+        """run() resolves A records for the domain."""
+        plugin = DnsPlugin()
+        with (
+            patch("mapsec.plugins.dns_enum.socket.getaddrinfo") as mock_gai,
+            patch.object(plugin, "_resolve_mx", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_ns", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_txt", AsyncMock(return_value=[])),
+        ):
+            mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+            result = await plugin.run("example.com")
+
+        assert "A" in result["records"]
+        assert "93.184.216.34" in result["records"]["A"]
+
+    async def test_run_handles_resolution_failure(self):
+        """run() gracefully handles DNS resolution failure."""
+        plugin = DnsPlugin()
+        with (
+            patch("mapsec.plugins.dns_enum.socket.getaddrinfo") as mock_gai,
+            patch.object(plugin, "_resolve_mx", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_ns", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_txt", AsyncMock(return_value=[])),
+        ):
+            # Simulate lookup failure
+            import socket as _socket
+            mock_gai.side_effect = _socket.gaierror("Name or service not known")
+
+            result = await plugin.run("nonexistent.example.com")
+
+        assert result["records"]["A"] == []
+        assert result["records"]["AAAA"] == []
+
+    async def test_run_subdomain_enumeration_returns_list(self):
+        """run() returns subdomains as a list (possibly empty)."""
+        plugin = DnsPlugin()
+        with (
+            patch("mapsec.plugins.dns_enum.socket.getaddrinfo") as mock_gai,
+            patch.object(plugin, "_resolve_mx", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_ns", AsyncMock(return_value=[])),
+            patch.object(plugin, "_resolve_txt", AsyncMock(return_value=[])),
+        ):
+            # getaddrinfo fails for subdomains → empty subdomain list
+            import socket as _socket
+            mock_gai.side_effect = _socket.gaierror("not found")
+
+            result = await plugin.run("example.com")
+
+        assert isinstance(result["subdomains"], list)
+        assert result["total_subdomains"] == 0
+
+
+# ── WhoisPlugin ─────────────────────────────────────────────────────────
+
+
+class TestWhoisPluginValidateTarget:
+    """Tests for WhoisPlugin.validate_target()."""
+
+    def test_accepts_valid_domains(self):
+        plugin = WhoisPlugin()
+        for domain in ["example.com", "sub.example.com", "my-host.org", "test.co.uk"]:
+            assert plugin.validate_target(domain) is True, f"Should accept {domain}"
+
+    def test_accepts_valid_ipv4(self):
+        plugin = WhoisPlugin()
+        for ip in ["192.168.1.1", "10.0.0.1", "8.8.8.8"]:
+            assert plugin.validate_target(ip) is True, f"Should accept {ip}"
+
+    def test_rejects_empty_string(self):
+        assert WhoisPlugin().validate_target("") is False
+
+    def test_rejects_single_word(self):
+        assert WhoisPlugin().validate_target("localhost") is False
+
+    def test_rejects_special_characters(self):
+        assert WhoisPlugin().validate_target("!@#$%") is False
+
+
+@pytest.mark.asyncio
+class TestWhoisPluginRun:
+    """Tests for WhoisPlugin.run()."""
+
+    async def test_run_returns_required_keys(self):
+        plugin = WhoisPlugin()
+        mock_response = (
+            b"Registrar: Example Registrar\n"
+            b"Creation Date: 2020-01-01\n"
+            b"Registry Expiry Date: 2030-01-01\n"
+            b"Name Server: ns1.example.com\n"
+            b"Name Server: ns2.example.com\n"
+            b"Registrant Organization: Example Org\n"
+            b"Registrant Country: US\n"
+        )
+        with patch.object(plugin, "_whois_query", new_callable=AsyncMock, return_value=mock_response.decode()):
+            result = await plugin.run("example.com")
+
+        assert result["target"] == "example.com"
+        assert result["type"] == "domain"
+        assert "registrar" in result
+        assert "creation_date" in result
+        assert "name_servers" in result
+        assert "registrant" in result
+
+    async def test_run_handles_connection_error(self):
+        plugin = WhoisPlugin()
+        with patch.object(plugin, "_whois_query", new_callable=AsyncMock, return_value="# ERROR: timeout"):
+            result = await plugin.run("example.com")
+        assert result["target"] == "example.com"
+        assert result["registrar"] == ""
+
+    async def test_run_ip_target_uses_arin(self):
+        plugin = WhoisPlugin()
+        with patch.object(plugin, "_whois_query", new_callable=AsyncMock, return_value="NetRange: 10.0.0.0 - 10.0.0.255"):
+            result = await plugin.run("10.0.0.1")
+        assert result["type"] == "ip"
+
+
+# ── BannerGrabPlugin ────────────────────────────────────────────────────
+
+
+class TestBannerGrabPluginValidateTarget:
+    """Tests for BannerGrabPlugin.validate_target()."""
+
+    def test_accepts_valid_ipv4(self):
+        plugin = BannerGrabPlugin()
+        for ip in ["192.168.1.1", "10.0.0.1", "8.8.8.8"]:
+            assert plugin.validate_target(ip) is True
+
+    def test_accepts_valid_hostnames(self):
+        plugin = BannerGrabPlugin()
+        for h in ["localhost", "example.com", "my-host.com"]:
+            assert plugin.validate_target(h) is True
+
+    def test_rejects_empty_string(self):
+        assert BannerGrabPlugin().validate_target("") is False
+
+    def test_rejects_special_characters(self):
+        assert BannerGrabPlugin().validate_target("!@#$%") is False
+
+
+@pytest.mark.asyncio
+class TestBannerGrabPluginRun:
+    """Tests for BannerGrabPlugin.run()."""
+
+    async def test_run_returns_required_keys(self):
+        plugin = BannerGrabPlugin()
+        with patch("mapsec.plugins.banner_grab.socket.getaddrinfo") as mock_gai:
+            mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+            with patch("mapsec.plugins.banner_grab.asyncio.open_connection", new_callable=AsyncMock, side_effect=ConnectionRefusedError):
+                result = await plugin.run("10.0.0.1")
+        assert "target" in result
+        assert "ip" in result
+        assert "banners" in result
+        assert "total_banners" in result
+        assert isinstance(result["banners"], list)
+
+    async def test_run_grabs_http_banner(self):
+        plugin = BannerGrabPlugin()
+        mock_reader = AsyncMock()
+        mock_reader.read = AsyncMock(return_value=(
+            b"HTTP/1.1 200 OK\r\nServer: nginx/1.18.0\r\nX-Powered-By: PHP/8.1\r\n\r\n"
+        ))
+        mock_writer = Mock()
+        mock_writer.close = Mock()
+        mock_writer.wait_closed = AsyncMock()
+        mock_writer.write = Mock()
+        mock_writer.drain = AsyncMock()
+
+        with patch("mapsec.plugins.banner_grab.socket.getaddrinfo") as mock_gai, \
+             patch("mapsec.plugins.banner_grab.asyncio.open_connection", new_callable=AsyncMock) as mock_conn:
+            mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+            async def _open(host, port):
+                if port == 80:
+                    return (mock_reader, mock_writer)
+                raise ConnectionRefusedError()
+            mock_conn.side_effect = _open
+            result = await plugin.run("10.0.0.1")
+
+        http_banners = [b for b in result["banners"] if b["port"] == 80]
+        assert len(http_banners) == 1
+        assert "nginx" in http_banners[0].get("banner", "")
+        assert "headers" in http_banners[0]
+
+    async def test_run_handles_no_open_ports(self):
+        plugin = BannerGrabPlugin()
+        with patch("mapsec.plugins.banner_grab.socket.getaddrinfo") as mock_gai, \
+             patch("mapsec.plugins.banner_grab.asyncio.open_connection", new_callable=AsyncMock, side_effect=ConnectionRefusedError):
+            mock_gai.return_value = [(2, 1, 6, "", ("10.0.0.1", 0))]
+            result = await plugin.run("10.0.0.1")
+        assert result["total_banners"] == 0

@@ -23,6 +23,8 @@ from mapsec.gui.results_panel import ResultsPanel
 import mapsec.plugins.nmap_scan  # noqa: F401
 import mapsec.plugins.dns_enum  # noqa: F401
 import mapsec.plugins.vt_lookup  # noqa: F401
+import mapsec.plugins.whois_lookup  # noqa: F401
+import mapsec.plugins.banner_grab  # noqa: F401
 
 # ─── Theme ──────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -391,6 +393,32 @@ class MapsecGUI(ctk.CTk):
         self._chk_vt.pack(side="left", padx=(0, 24))
         self._update_vt_status()
 
+        self._chk_whois = ctk.CTkCheckBox(
+            option_row,
+            text="\u2022 whois \u2014 registration info",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_whois.pack(side="left", padx=(0, 24))
+
+        self._chk_banner = ctk.CTkCheckBox(
+            option_row,
+            text="\u2022 banner \u2014 service banners",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_banner.pack(side="left", padx=(0, 24))
+
         self._settings_btn = ctk.CTkButton(
             option_row,
             text="\u2699  Settings",
@@ -444,7 +472,17 @@ class MapsecGUI(ctk.CTk):
         self._status_vt = ctk.CTkLabel(
             status_frame, text="\u25cb vt", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
-        self._status_vt.pack(side="left")
+        self._status_vt.pack(side="left", padx=(0, 24))
+
+        self._status_whois = ctk.CTkLabel(
+            status_frame, text="\u25cb whois", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_whois.pack(side="left", padx=(0, 24))
+
+        self._status_banner = ctk.CTkLabel(
+            status_frame, text="\u25cb banner", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_banner.pack(side="left")
 
     # ── Scan Tab — Activity Log ─────────────────────────────────
 
@@ -751,6 +789,8 @@ class MapsecGUI(ctk.CTk):
             ("nmap", self._status_nmap),
             ("dns", self._status_dns),
             ("vt", self._status_vt),
+            ("whois", self._status_whois),
+            ("banner", self._status_banner),
         ]:
             if name in plugins:
                 label.configure(text=f"\u25b6 {name}", text_color=WARNING)
@@ -942,6 +982,10 @@ class MapsecGUI(ctk.CTk):
             plugins.append("dns")
         if self._chk_vt.get():
             plugins.append("vt")
+        if self._chk_whois.get():
+            plugins.append("whois")
+        if self._chk_banner.get():
+            plugins.append("banner")
         return plugins
 
     def _update_progress(self, pct: float, text: str) -> None:

@@ -604,6 +604,212 @@ class VtTab(ctk.CTkScrollableFrame):
             ctk.CTkFrame(cat_frame, fg_color="transparent", height=12).pack()
 
 
+class WhoisTab(ctk.CTkScrollableFrame):
+    """Tab displaying WHOIS lookup results."""
+
+    def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(
+            master,
+            fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+            **kwargs,
+        )
+
+        target = data.get("target", "")
+        target_type = data.get("type", "domain")
+        registrar = data.get("registrar", "")
+        creation_date = data.get("creation_date", "")
+        expiration_date = data.get("expiration_date", "")
+        name_servers = data.get("name_servers", [])
+        registrant = data.get("registrant", {})
+
+        # Target header
+        ctk.CTkLabel(
+            self,
+            text=f"{target_type.upper()}: {target}",
+            font=("Segoe UI", 16, "bold"),
+            text_color=PRIMARY_HOVER,
+        ).pack(anchor="w", pady=(0, 16))
+
+        # Summary cards
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=(0, 16))
+        cards_frame.columnconfigure(0, weight=1)
+        cards_frame.columnconfigure(1, weight=1)
+        cards_frame.columnconfigure(2, weight=1)
+
+        ResultCard(cards_frame, "REGISTRAR", registrar or "--", PRIMARY).grid(
+            row=0, column=0, sticky="ew", padx=(0, 8)
+        )
+        ResultCard(
+            cards_frame, "NAME SERVERS", str(len(name_servers)), ACCENT_PURPLE
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        ResultCard(
+            cards_frame, "TYPE", target_type.upper(), ACCENT_CYAN
+        ).grid(row=0, column=2, sticky="ew")
+
+        # Registration info
+        info_frame = ctk.CTkFrame(
+            self, fg_color=BG_SURFACE, border_width=1,
+            border_color=BORDER, corner_radius=12,
+        )
+        info_frame.pack(fill="x", pady=(0, 12))
+
+        info_header = ctk.CTkFrame(info_frame, fg_color="transparent")
+        info_header.pack(fill="x", padx=16, pady=(14, 0))
+        info_dot = ctk.CTkFrame(info_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
+        info_dot.pack(side="left", padx=(0, 8))
+        info_dot.pack_propagate(False)
+        ctk.CTkLabel(info_header, text="Registration Info", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+
+        if registrar:
+            row = ctk.CTkFrame(info_frame, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(10, 0))
+            ctk.CTkLabel(row, text="Registrar", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=registrar, font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
+
+        if creation_date:
+            row = ctk.CTkFrame(info_frame, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(6, 0))
+            ctk.CTkLabel(row, text="Created", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=str(creation_date), font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
+
+        if expiration_date:
+            row = ctk.CTkFrame(info_frame, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(6, 14))
+            ctk.CTkLabel(row, text="Expires", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=str(expiration_date), font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
+
+        # Registrant info
+        org = registrant.get("org", "")
+        country = registrant.get("country", "")
+        if org or country:
+            reg_frame = ctk.CTkFrame(
+                self, fg_color=BG_SURFACE, border_width=1,
+                border_color=BORDER, corner_radius=12,
+            )
+            reg_frame.pack(fill="x", pady=(0, 12))
+
+            reg_header = ctk.CTkFrame(reg_frame, fg_color="transparent")
+            reg_header.pack(fill="x", padx=16, pady=(14, 0))
+            reg_dot = ctk.CTkFrame(reg_header, fg_color=ACCENT_PURPLE, width=4, height=14, corner_radius=2)
+            reg_dot.pack(side="left", padx=(0, 8))
+            reg_dot.pack_propagate(False)
+            ctk.CTkLabel(reg_header, text="Registrant", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+
+            if org:
+                row = ctk.CTkFrame(reg_frame, fg_color="transparent")
+                row.pack(fill="x", padx=16, pady=(10, 0))
+                ctk.CTkLabel(row, text="Organization", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+                ctk.CTkLabel(row, text=org, font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
+
+            if country:
+                row = ctk.CTkFrame(reg_frame, fg_color="transparent")
+                row.pack(fill="x", padx=16, pady=(6, 14))
+                ctk.CTkLabel(row, text="Country", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+                ctk.CTkLabel(row, text=country, font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
+
+        # Name servers
+        if name_servers:
+            ns_header = ctk.CTkFrame(self, fg_color="transparent")
+            ns_header.pack(fill="x", pady=(14, 8))
+            ns_dot = ctk.CTkFrame(ns_header, fg_color=ACCENT_PURPLE, width=4, height=14, corner_radius=2)
+            ns_dot.pack(side="left", padx=(0, 8))
+            ns_dot.pack_propagate(False)
+            ctk.CTkLabel(ns_header, text="Name Servers", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+
+            for ns in name_servers:
+                DnsRecordRow(self, "NS", ns).pack(fill="x", pady=4)
+
+
+class BannerTab(ctk.CTkScrollableFrame):
+    """Tab displaying banner grabbing results."""
+
+    def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(
+            master,
+            fg_color="transparent",
+            scrollbar_fg_color=BG_ELEVATED,
+            scrollbar_button_color=BORDER,
+            scrollbar_button_hover_color=PRIMARY,
+            **kwargs,
+        )
+
+        target = data.get("target", "")
+        ip = data.get("ip", "")
+        banners = data.get("banners", [])
+
+        # Target header
+        ctk.CTkLabel(
+            self,
+            text=f"{target}" + (f" ({ip})" if ip and ip != target else ""),
+            font=("Segoe UI", 16, "bold"),
+            text_color=PRIMARY_HOVER,
+        ).pack(anchor="w", pady=(0, 16))
+
+        # Summary
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=(0, 16))
+        cards_frame.columnconfigure(0, weight=1)
+        cards_frame.columnconfigure(1, weight=1)
+
+        ResultCard(
+            cards_frame, "SERVICES FOUND", str(len(banners)), WARNING
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+        http_count = sum(1 for b in banners if b.get("port") in (80, 443, 8080, 8443))
+        ResultCard(
+            cards_frame, "HTTP SERVICES", str(http_count), ACCENT_CYAN
+        ).grid(row=0, column=1, sticky="ew")
+
+        # Banner list header
+        if banners:
+            list_header = ctk.CTkFrame(self, fg_color="transparent")
+            list_header.pack(fill="x", pady=(12, 8))
+            list_dot = ctk.CTkFrame(list_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
+            list_dot.pack(side="left", padx=(0, 8))
+            list_dot.pack_propagate(False)
+            ctk.CTkLabel(list_header, text="Service Banners", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+
+        # Banner rows
+        for banner in banners:
+            port = banner.get("port", 0)
+            service = banner.get("service", "unknown")
+            banner_text = banner.get("banner", "No banner")
+            headers = banner.get("headers", {})
+
+            row_frame = ctk.CTkFrame(
+                self, fg_color=BG_SURFACE, border_width=1,
+                border_color=BORDER, corner_radius=10, height=44,
+            )
+            row_frame.pack(fill="x", pady=4)
+            row_frame.pack_propagate(False)
+
+            # Port badge
+            port_badge = ctk.CTkLabel(
+                row_frame, text=str(port), font=FONT_CODE_B,
+                text_color="#ffffff", fg_color=PRIMARY_DIM,
+                corner_radius=6, width=64, height=24,
+            )
+            port_badge.pack(side="left", padx=(16, 0), pady=0)
+
+            # Service badge
+            svc_badge = ctk.CTkLabel(
+                row_frame, text=service.upper(), font=FONT_BADGE_SM,
+                fg_color=BG_ELEVATED, text_color=TEXT_MUTED,
+                corner_radius=6, width=50, height=20,
+            )
+            svc_badge.pack(side="left", padx=(12, 0))
+
+            # Banner text
+            ctk.CTkLabel(
+                row_frame, text=banner_text, font=FONT_CODE_SM,
+                text_color=TEXT_SEC,
+            ).pack(side="left", padx=(14, 0), fill="x", expand=True)
+
+
 # ─── Expandable Result Card ─────────────────────────────────────
 
 
@@ -824,6 +1030,20 @@ class ResultsPanel(ctk.CTkFrame):
                 return "Threat Intel", [f"{suspicious} suspicious"], WARNING
             return "Threat Intel", ["CLEAN"], SUCCESS
 
+        if plugin == "whois":
+            registrar = data.get("registrar", "")
+            ns_count = len(data.get("name_servers", []))
+            items = []
+            if registrar:
+                items.append(registrar)
+            if ns_count:
+                items.append(f"{ns_count} name servers")
+            return "Whois Lookup", items if items else ["--"], ACCENT_CYAN
+
+        if plugin == "banner":
+            banners = data.get("banners", [])
+            return "Banners", [f"{len(banners)} services found"], WARNING
+
         return plugin.capitalize(), ["\u2014"], TEXT_DIM
 
     # ── Detail widget factory ───────────────────────────────────
@@ -844,6 +1064,10 @@ class ResultsPanel(ctk.CTkFrame):
                 return DnsTab(parent, data)
             if plugin == "vt":
                 return VtTab(parent, data)
+            if plugin == "whois":
+                return WhoisTab(parent, data)
+            if plugin == "banner":
+                return BannerTab(parent, data)
 
             return ctk.CTkLabel(
                 parent,
