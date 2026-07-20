@@ -393,6 +393,22 @@ class MapsecGUI(ctk.CTk):
         self._chk_vt.pack(side="left", padx=(0, 24))
         self._update_vt_status()
 
+        self._settings_btn = ctk.CTkButton(
+            option_row1,
+            text="\u2699  Settings",
+            width=100,
+            height=32,
+            font=FONT_SMALL,
+            fg_color="transparent",
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT_MUTED,
+            hover_color=BG_ELEVATED,
+            corner_radius=8,
+            command=self._open_settings,
+        )
+        self._settings_btn.pack(side="right")
+
         option_row2 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
         option_row2.pack(fill="x", padx=14, pady=(6, 10))
 
@@ -421,22 +437,6 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_banner.pack(side="left", padx=(0, 24))
-
-        self._settings_btn = ctk.CTkButton(
-            option_row2,
-            text="\u2699  Settings",
-            width=100,
-            height=32,
-            font=FONT_SMALL,
-            fg_color="transparent",
-            border_width=1,
-            border_color=BORDER,
-            hover_color=BG_ELEVATED,
-            text_color=TEXT_MUTED,
-            corner_radius=8,
-            command=self._open_settings,
-        )
-        self._settings_btn.pack(side="right")
 
         # Progress area
         progress_frame = ctk.CTkFrame(frame, fg_color="transparent")
