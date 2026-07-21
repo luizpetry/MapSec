@@ -247,6 +247,49 @@ class TestRules:
         assert len(dangerous) == 1
         assert dangerous[0].severity == "high"
 
+    def test_check_open_ports_no_https_with_ssl_ran(self):
+        """No HTTPS detected + ssl plugin ran → medium severity."""
+        results = {
+            "nmap": {
+                "hosts": [{"ip": "10.0.0.1", "ports": [
+                    {"port": 80, "state": "open", "service": "http"},
+                ]}]
+            },
+            "ssl": {"certificate": {"is_expired": False}},
+        }
+        findings = run_rules(results)
+        https_f = [f for f in findings if "https" in f.title.lower() or "tls" in f.title.lower()]
+        assert len(https_f) == 1
+        assert https_f[0].severity == "medium"
+
+    def test_check_open_ports_no_https_without_ssl(self):
+        """No HTTPS detected + ssl plugin NOT run → info severity."""
+        results = {
+            "nmap": {
+                "hosts": [{"ip": "10.0.0.1", "ports": [
+                    {"port": 80, "state": "open", "service": "http"},
+                ]}]
+            },
+        }
+        findings = run_rules(results)
+        https_f = [f for f in findings if "https" in f.title.lower() or "tls" in f.title.lower()]
+        assert len(https_f) == 1
+        assert https_f[0].severity == "info"
+
+    def test_check_open_ports_no_https_with_tls_open(self):
+        """Port 443 open → no finding."""
+        results = {
+            "nmap": {
+                "hosts": [{"ip": "10.0.0.1", "ports": [
+                    {"port": 80, "state": "open", "service": "http"},
+                    {"port": 443, "state": "open", "service": "https"},
+                ]}]
+            },
+        }
+        findings = run_rules(results)
+        https_f = [f for f in findings if "https" in f.title.lower() or "tls" in f.title.lower()]
+        assert len(https_f) == 0
+
     def test_check_vt_malicious(self):
         """Detects VT malicious > 0."""
         results = {"vt": {"malicious": 3, "suspicious": 1, "total": 80}}

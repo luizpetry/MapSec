@@ -15,8 +15,9 @@ from typing import Any
 
 import customtkinter as ctk
 
-from mapsec.core.engine import Engine
+from mapsec.core.engine import Engine, _needs_context
 from mapsec.core.models import PluginResult, ScanConfig, ScanReport
+from mapsec.core.plugin import get_plugins
 from mapsec.analysis.engine import AnalysisEngine
 from mapsec.gui.results_panel import ResultsPanel
 
@@ -28,6 +29,8 @@ import mapsec.plugins.whois_lookup  # noqa: F401
 import mapsec.plugins.banner_grab  # noqa: F401
 import mapsec.plugins.ssl_check  # noqa: F401
 import mapsec.plugins.http_headers  # noqa: F401
+import mapsec.plugins.shodan_lookup  # noqa: F401
+import mapsec.plugins.cve_lookup  # noqa: F401
 
 # ─── Theme ──────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
@@ -122,8 +125,14 @@ class MapsecGUI(ctk.CTk):
         if vt_key:
             os.environ["VT_API_KEY"] = vt_key
 
+        # Apply saved Shodan API key
+        shodan_key = self._config.get("shodan_api_key", "")
+        if shodan_key:
+            os.environ["SHODAN_API_KEY"] = shodan_key
+
         # State
         self._scan_report: ScanReport | None = None
+        self._analysis_report = None  # AnalysisReport | None
         self._is_scanning = False
         self._scan_thread: threading.Thread | None = None
         self._analysis_engine = AnalysisEngine()
@@ -287,7 +296,7 @@ class MapsecGUI(ctk.CTk):
             corner_radius=10,
         )
         self._target_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
-        self._target_entry.bind("<Return>", lambda e: self._start_scan())
+        self._target_entry.bind("<Return>", lambda e: self._on_enter_pressed())
         self._target_entry.bind(
             "<FocusIn>", lambda e: self._target_entry.configure(border_color=BORDER_FOCUS)
         )
@@ -462,8 +471,12 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_ssl.pack(side="left", padx=(0, 24))
 
+        # Row 3: headers + shodan + cve
+        option_row3 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
+        option_row3.pack(fill="x", padx=14, pady=(0, 10))
+
         self._chk_headers = ctk.CTkCheckBox(
-            option_row2,
+            option_row3,
             text="\u2022 headers \u2014 security headers",
             font=FONT_BODY,
             text_color=TEXT_SEC,
@@ -474,6 +487,33 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_headers.pack(side="left", padx=(0, 24))
+
+        self._chk_shodan = ctk.CTkCheckBox(
+            option_row3,
+            text="\u2022 shodan \u2014 IoT / device search",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_shodan.pack(side="left", padx=(0, 24))
+        self._update_shodan_status()
+
+        self._chk_cve = ctk.CTkCheckBox(
+            option_row3,
+            text="\u2022 cve \u2014 vulnerability lookup",
+            font=FONT_BODY,
+            text_color=TEXT_SEC,
+            fg_color=PRIMARY,
+            hover_color=PRIMARY_HOVER,
+            border_color=BORDER,
+            corner_radius=4,
+            checkmark_color="#ffffff",
+        )
+        self._chk_cve.pack(side="left", padx=(0, 24))
 
         # Progress area
         progress_frame = ctk.CTkFrame(frame, fg_color="transparent")
@@ -532,7 +572,17 @@ class MapsecGUI(ctk.CTk):
         self._status_headers = ctk.CTkLabel(
             status_frame, text="\u25cb headers", font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
-        self._status_headers.pack(side="left")
+        self._status_headers.pack(side="left", padx=(0, 24))
+
+        self._status_shodan = ctk.CTkLabel(
+            status_frame, text="\u25cb shodan", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_shodan.pack(side="left", padx=(0, 24))
+
+        self._status_cve = ctk.CTkLabel(
+            status_frame, text="\u25cb cve", font=FONT_CODE_SM, text_color=TEXT_DIM,
+        )
+        self._status_cve.pack(side="left")
 
     # ── Scan Tab — Activity Log ─────────────────────────────────
 
@@ -641,20 +691,33 @@ class MapsecGUI(ctk.CTk):
         )
         self._analyze_btn.pack(side="left")
 
-        self._export_btn = ctk.CTkButton(
-            action_frame,
-            text="\u2b07  Export JSON",
-            width=140,
-            height=38,
-            font=("Segoe UI", 12, "bold"),
-            fg_color=SUCCESS,
-            hover_color=SUCCESS_DIM,
-            text_color="#ffffff",
-            corner_radius=10,
-            state="disabled",
-            command=self._export_results,
+        # Export format buttons (right side)
+        export_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        export_frame.pack(side="right")
+
+        self._export_json_btn = ctk.CTkButton(
+            export_frame, text="JSON", width=60, height=30,
+            font=("Segoe UI", 10, "bold"), fg_color="#2563eb",
+            hover_color="#1d4ed8", text_color="#ffffff", corner_radius=8,
+            state="disabled", command=self._export_json,
         )
-        self._export_btn.pack(side="right")
+        self._export_json_btn.pack(side="left", padx=(0, 3))
+
+        self._export_html_btn = ctk.CTkButton(
+            export_frame, text="HTML", width=60, height=30,
+            font=("Segoe UI", 10, "bold"), fg_color="#7c3aed",
+            hover_color="#6d28d9", text_color="#ffffff", corner_radius=8,
+            state="disabled", command=self._export_html,
+        )
+        self._export_html_btn.pack(side="left", padx=(0, 3))
+
+        self._export_pdf_btn = ctk.CTkButton(
+            export_frame, text="PDF", width=60, height=30,
+            font=("Segoe UI", 10, "bold"), fg_color="#dc2626",
+            hover_color="#b91c1c", text_color="#ffffff", corner_radius=8,
+            state="disabled", command=self._export_pdf,
+        )
+        self._export_pdf_btn.pack(side="left")
 
     def _on_results_rendered(self, info: dict[str, Any]) -> None:
         """Callback fired after ResultsPanel finishes rendering cards."""
@@ -686,6 +749,18 @@ class MapsecGUI(ctk.CTk):
             self._chk_vt.configure(text_color=ERROR)
             self._chk_vt.configure(text="\u2022 vt \u2014 no API key")
             self._chk_vt.deselect()
+
+    def _update_shodan_status(self) -> None:
+        """Update Shodan checkbox appearance based on API key status."""
+        key = self._config.get("shodan_api_key", "")
+        if key:
+            self._chk_shodan.configure(text_color=SUCCESS)
+            masked = key[:4] + "\u00b7\u00b7\u00b7" + key[-4:] if len(key) > 8 else "\u2022\u2022\u2022\u2022"
+            self._chk_shodan.configure(text=f"\u2022 shodan \u2014 {masked}")
+        else:
+            self._chk_shodan.configure(text_color=ERROR)
+            self._chk_shodan.configure(text="\u2022 shodan \u2014 no API key")
+            self._chk_shodan.deselect()
 
     def _open_settings(self) -> None:
         """Open settings dialog for API key configuration."""
@@ -763,6 +838,40 @@ class MapsecGUI(ctk.CTk):
 
         ctk.CTkLabel(
             scroll, text="Get a free key at virustotal.com",
+            font=FONT_TINY, text_color=TEXT_DIM,
+        ).pack(anchor="w", padx=18, pady=(0, 10))
+
+        # ── Separator ──────────────────────────────────────────
+        ctk.CTkFrame(scroll, fg_color=BORDER, height=1).pack(
+            fill="x", padx=18, pady=(4, 10),
+        )
+
+        # ── Shodan API Key ────────────────────────────────────
+        ctk.CTkLabel(
+            scroll, text="Shodan API Key (optional)", font=FONT_BODY, text_color=TEXT_SEC,
+        ).pack(anchor="w", padx=18)
+
+        shodan_entry = ctk.CTkEntry(
+            scroll,
+            placeholder_text="Paste your Shodan API key here",
+            width=370,
+            height=36,
+            font=FONT_CODE,
+            fg_color=BG_INPUT,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            corner_radius=10,
+            show="\u2022",
+        )
+        shodan_entry.pack(padx=18, pady=(6, 2))
+
+        current_shodan = self._config.get("shodan_api_key", "")
+        if current_shodan:
+            shodan_entry.insert(0, current_shodan)
+
+        ctk.CTkLabel(
+            scroll, text="Free tier available at account.shodan.io",
             font=FONT_TINY, text_color=TEXT_DIM,
         ).pack(anchor="w", padx=18, pady=(0, 10))
 
@@ -872,6 +981,15 @@ class MapsecGUI(ctk.CTk):
                 self._config.pop("vt_api_key", None)
                 os.environ.pop("VT_API_KEY", None)
 
+            # Shodan key
+            shodan_val = shodan_entry.get().strip()
+            if shodan_val:
+                self._config["shodan_api_key"] = shodan_val
+                os.environ["SHODAN_API_KEY"] = shodan_val
+            else:
+                self._config.pop("shodan_api_key", None)
+                os.environ.pop("SHODAN_API_KEY", None)
+
             # LLM config
             prov_val = provider_var.get()
             llm_val = llm_key_entry.get().strip()
@@ -892,19 +1010,23 @@ class MapsecGUI(ctk.CTk):
 
             save_config(self._config)
             self._update_vt_status()
+            self._update_shodan_status()
             status_label.configure(text="Saved", text_color=SUCCESS)
             dialog.after(800, dialog.destroy)
 
         def clear_all() -> None:
             vt_entry.delete(0, "end")
+            shodan_entry.delete(0, "end")
             llm_key_entry.delete(0, "end")
             model_entry.delete(0, "end")
             provider_var.set("none")
-            for key in ("vt_api_key", "llm_provider", "llm_api_key", "llm_model"):
+            for key in ("vt_api_key", "shodan_api_key", "llm_provider", "llm_api_key", "llm_model"):
                 self._config.pop(key, None)
             os.environ.pop("VT_API_KEY", None)
+            os.environ.pop("SHODAN_API_KEY", None)
             save_config(self._config)
             self._update_vt_status()
+            self._update_shodan_status()
             self._analysis_engine.configure_llm(None, None)
             status_label.configure(text="All keys cleared", text_color=ERROR)
             dialog.after(800, dialog.destroy)
@@ -930,8 +1052,17 @@ class MapsecGUI(ctk.CTk):
 
     # ── Actions ────────────────────────────────────────────────
 
+    def _on_enter_pressed(self) -> None:
+        """Only start scan if the target entry actually has focus."""
+        focused = self.focus_get()
+        if focused == self._target_entry:
+            self._start_scan()
+
     def _start_scan(self) -> None:
         """Validate inputs and start the scan in a background thread."""
+        if self._is_scanning:
+            return
+
         target = self._target_entry.get().strip()
         if not target:
             self._log_error("Enter a scan target.")
@@ -944,10 +1075,11 @@ class MapsecGUI(ctk.CTk):
 
         # Reset state
         self._scan_report = None
+        self._analysis_report = None
         self._is_scanning = True
         self._scan_btn.configure(state="disabled")
         self._cancel_btn.configure(state="normal")
-        self._export_btn.configure(state="disabled")
+        self._export_btn_state("disabled")
         self._progress_bar.set(0)
         self._progress_label.configure(text="Scanning...")
 
@@ -958,6 +1090,10 @@ class MapsecGUI(ctk.CTk):
             ("vt", self._status_vt),
             ("whois", self._status_whois),
             ("banner", self._status_banner),
+            ("ssl", self._status_ssl),
+            ("headers", self._status_headers),
+            ("shodan", self._status_shodan),
+            ("cve", self._status_cve),
         ]:
             if name in plugins:
                 label.configure(text=f"\u25b6 {name}", text_color=WARNING)
@@ -979,35 +1115,25 @@ class MapsecGUI(ctk.CTk):
 
     def _run_scan_thread(self, target: str, plugins: list[str]) -> None:
         """Execute scan in background thread (blocking)."""
-        import pathlib
-        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
-        def _dlog(msg):
-            from datetime import datetime as dt
-            with open(dbg, "a", encoding="utf-8") as f:
-                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
-
-        _dlog(f"Thread started: target={target}, plugins={plugins}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
-            _dlog("Calling _execute_scan...")
             report = loop.run_until_complete(self._execute_scan(target, plugins))
-            _dlog(f"Scan done, results={len(report.results)}, calling _on_scan_complete")
             self.after(0, self._on_scan_complete, report)
-            _dlog("self.after(_on_scan_complete) scheduled")
         except Exception as e:
-            _dlog(f"EXCEPTION: {e}")
             self.after(0, self._on_scan_error, str(e))
         finally:
             loop.close()
-            _dlog("Thread finished")
 
     async def _execute_scan(self, target: str, plugins: list[str]) -> ScanReport:
         """Execute plugins sequentially for progress tracking."""
         total = len(plugins)
         report = ScanReport(target=target, started_at=datetime.now())
         engine = Engine()
+
+        # Accumulate context for context-dependent plugins (e.g. CVE)
+        accumulated_context: dict[str, Any] = {}
 
         for i, plugin_name in enumerate(plugins):
             if not self._is_scanning:
@@ -1020,38 +1146,65 @@ class MapsecGUI(ctk.CTk):
             start = time.time()
 
             try:
-                plugin_report = await engine.run(config)
-                if plugin_report.results:
-                    result = plugin_report.results[0]
-                    report.add_result(result)
-
-                    if result.success:
-                        self.after(
-                            0,
-                            self._update_plugin_status,
-                            plugin_name,
-                            "success",
-                            result.duration_seconds,
-                        )
-                        self.after(
-                            0,
-                            self._log_success,
-                            f"{plugin_name.upper()} complete ({result.duration_seconds:.1f}s)",
+                result = None
+                # For context-dependent plugins (e.g. CVE), run directly with accumulated context
+                plugin_cls = get_plugins().get(plugin_name)
+                if plugin_cls and _needs_context(plugin_cls) and accumulated_context:
+                    plugin_instance = plugin_cls()
+                    start_inner = time.time()
+                    if plugin_instance.validate_target(target):
+                        data = await plugin_instance.run(target, context=accumulated_context)
+                        duration_inner = time.time() - start_inner
+                        result = PluginResult(
+                            plugin=plugin_name, target=target, data=data,
+                            success=True, duration_seconds=round(duration_inner, 2),
                         )
                     else:
-                        self.after(
-                            0,
-                            self._update_plugin_status,
-                            plugin_name,
-                            "failed",
-                            0,
-                            result.error,
+                        result = PluginResult(
+                            plugin=plugin_name, target=target, success=False,
+                            error=f"Target validation failed for plugin '{plugin_name}'",
                         )
-                        self.after(
-                            0,
-                            self._log_error,
-                            f"{plugin_name.upper()} failed: {result.error}",
-                        )
+                    report.add_result(result)
+                    if result.success and result.data:
+                        accumulated_context[plugin_name] = result.data
+                else:
+                    plugin_report = await engine.run(config)
+                    if plugin_report.results:
+                        result = plugin_report.results[0]
+                        report.add_result(result)
+                        # Accumulate successful results for context-dependent plugins
+                        if result.success and result.data:
+                            accumulated_context[plugin_name] = result.data
+                    else:
+                        result = None
+
+                if result and result.success:
+                    self.after(
+                        0,
+                        self._update_plugin_status,
+                        plugin_name,
+                        "success",
+                        result.duration_seconds,
+                    )
+                    self.after(
+                        0,
+                        self._log_success,
+                        f"{plugin_name.upper()} complete ({result.duration_seconds:.1f}s)",
+                    )
+                elif result:
+                    self.after(
+                        0,
+                        self._update_plugin_status,
+                        plugin_name,
+                        "failed",
+                        0,
+                        result.error,
+                    )
+                    self.after(
+                        0,
+                        self._log_error,
+                        f"{plugin_name.upper()} failed: {result.error}",
+                    )
             except Exception as e:
                 duration = time.time() - start
                 result = PluginResult(
@@ -1071,33 +1224,18 @@ class MapsecGUI(ctk.CTk):
 
     def _on_scan_complete(self, report: ScanReport) -> None:
         """Handle scan completion on the main thread."""
-        import pathlib
-        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
-        def _dlog(msg):
-            from datetime import datetime as dt
-            with open(dbg, "a", encoding="utf-8") as f:
-                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
-
-        _dlog(f"_on_scan_complete called: results={len(report.results)}")
         self._scan_report = report
         self._is_scanning = False
 
         self._scan_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
-        self._export_btn.configure(state="normal")
+        self._export_btn_state("normal")
 
         successful = sum(1 for r in report.results if r.success)
         total = len(report.results)
         self._progress_label.configure(text=f"Complete \u2014 {successful}/{total} succeeded")
 
-        try:
-            _dlog("Calling _render_results...")
-            self._render_results(report)
-            _dlog("_render_results done")
-        except Exception as e:
-            _dlog(f"_render_results EXCEPTION: {e}")
-            import traceback
-            traceback.print_exc()
+        self._render_results(report)
 
     def _on_scan_error(self, error: str) -> None:
         """Handle scan error on the main thread."""
@@ -1152,6 +1290,7 @@ class MapsecGUI(ctk.CTk):
 
     def _on_analysis_complete(self, report) -> None:
         """Handle analysis completion on main thread."""
+        self._analysis_report = report
         self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
 
         # Render analysis results
@@ -1171,28 +1310,63 @@ class MapsecGUI(ctk.CTk):
         self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
         self._log_error(f"Analysis failed: {error}")
 
-    def _export_results(self) -> None:
-        """Export scan results to JSON file via dialog."""
+    def _export_btn_state(self, state: str) -> None:
+        """Enable or disable all export buttons."""
+        for btn in (self._export_json_btn, self._export_html_btn, self._export_pdf_btn):
+            btn.configure(state=state)
+
+    def _export_json(self) -> None:
+        """Export scan results to JSON file."""
         if not self._scan_report:
             self._log_error("No results to export.")
             return
-
         from tkinter import filedialog
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"mapsec_{self._scan_report.target}_{timestamp}.json"
-
-        filepath = filedialog.asksaveasfilename(
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=default_name,
-            title="Export Scan Results",
+            filetypes=[("JSON files", "*.json")],
+            initialfile=f"mapsec_{self._scan_report.target}_{ts}.json",
+            title="Export JSON",
         )
+        if fp:
+            Path(fp).write_text(json.dumps(self._scan_report.to_dict(), indent=2, ensure_ascii=False))
+            self._log_success(f"JSON saved: {fp}")
 
-        if filepath:
-            data = self._scan_report.to_dict()
-            Path(filepath).write_text(json.dumps(data, indent=2, ensure_ascii=False))
-            self._log_success(f"Report saved: {filepath}")
+    def _export_html(self) -> None:
+        """Export scan results to HTML report."""
+        if not self._scan_report:
+            self._log_error("No results to export.")
+            return
+        from tkinter import filedialog
+        from mapsec.output.html_report import write_html
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            filetypes=[("HTML files", "*.html")],
+            initialfile=f"mapsec_{self._scan_report.target}_{ts}.html",
+            title="Export HTML Report",
+        )
+        if fp:
+            write_html(self._scan_report, fp, analysis=self._analysis_report)
+            self._log_success(f"HTML report saved: {fp}")
+
+    def _export_pdf(self) -> None:
+        """Export scan results to PDF report."""
+        if not self._scan_report:
+            self._log_error("No results to export.")
+            return
+        from tkinter import filedialog
+        from mapsec.output.pdf_export import write_pdf
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialfile=f"mapsec_{self._scan_report.target}_{ts}.pdf",
+            title="Export PDF Report",
+        )
+        if fp:
+            write_pdf(self._scan_report, fp, analysis=self._analysis_report)
+            self._log_success(f"PDF report saved: {fp}")
 
     # ── UI Helpers ─────────────────────────────────────────────
 
@@ -1213,6 +1387,10 @@ class MapsecGUI(ctk.CTk):
             plugins.append("ssl")
         if self._chk_headers.get():
             plugins.append("headers")
+        if self._chk_shodan.get():
+            plugins.append("shodan")
+        if self._chk_cve.get():
+            plugins.append("cve")
         return plugins
 
     def _update_progress(self, pct: float, text: str) -> None:
@@ -1260,27 +1438,8 @@ class MapsecGUI(ctk.CTk):
 
     def _render_results(self, report: ScanReport) -> None:
         """Render final scan results in the tabbed panel."""
-        import pathlib
-        dbg = pathlib.Path.home() / ".mapsec" / "debug.log"
-        def _dlog(msg):
-            from datetime import datetime as dt
-            with open(dbg, "a", encoding="utf-8") as f:
-                f.write(f"{dt.now().strftime('%H:%M:%S.%f')}  {msg}\n")
-
-        _dlog(f"_render_results: {len(report.results)} results")
-        for r in report.results:
-            _dlog(f"  plugin={r.plugin}, success={r.success}, data_keys={list(r.data.keys()) if r.data else 'None'}")
-
         results_dicts = [r.model_dump() for r in report.results]
-        _dlog(f"model_dump done: {len(results_dicts)} dicts")
-
-        try:
-            self._results_panel.render(results_dicts)
-            _dlog("results_panel.render() done")
-        except Exception as e:
-            _dlog(f"results_panel.render() EXCEPTION: {e}")
-            import traceback
-            traceback.print_exc()
+        self._results_panel.render(results_dicts)
 
         successful = sum(1 for r in report.results if r.success)
         total = len(report.results)

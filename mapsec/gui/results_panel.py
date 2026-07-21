@@ -32,6 +32,7 @@ ACCENT_PINK   = "#f472b6"
 
 # ─── Fonts ──────────────────────────────────────────────────────
 FONT_HEADING   = ("Segoe UI", 18, "bold")
+FONT_TITLE     = ("Segoe UI", 16, "bold")
 FONT_SECTION   = ("Segoe UI", 13, "bold")
 FONT_BODY      = ("Segoe UI", 12)
 FONT_SMALL     = ("Segoe UI", 11)
@@ -276,16 +277,13 @@ class ThreatMeter(ctk.CTkFrame):
         ).pack(expand=True)
 
 
-class NmapTab(ctk.CTkScrollableFrame):
+class NmapTab(ctk.CTkFrame):
     """Tab displaying nmap scan results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -342,16 +340,13 @@ class NmapTab(ctk.CTkScrollableFrame):
                 )
 
 
-class DnsTab(ctk.CTkScrollableFrame):
+class DnsTab(ctk.CTkFrame):
     """Tab displaying DNS enumeration results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -444,16 +439,13 @@ class DnsTab(ctk.CTkScrollableFrame):
                 )
 
 
-class VtTab(ctk.CTkScrollableFrame):
+class VtTab(ctk.CTkFrame):
     """Tab displaying VirusTotal threat intelligence results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -604,16 +596,13 @@ class VtTab(ctk.CTkScrollableFrame):
             ctk.CTkFrame(cat_frame, fg_color="transparent", height=12).pack()
 
 
-class WhoisTab(ctk.CTkScrollableFrame):
+class WhoisTab(ctk.CTkFrame):
     """Tab displaying WHOIS lookup results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -724,16 +713,13 @@ class WhoisTab(ctk.CTkScrollableFrame):
                 DnsRecordRow(self, "NS", ns).pack(fill="x", pady=4)
 
 
-class BannerTab(ctk.CTkScrollableFrame):
+class BannerTab(ctk.CTkFrame):
     """Tab displaying banner grabbing results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -813,16 +799,13 @@ class BannerTab(ctk.CTkScrollableFrame):
 # ─── SSL/TLS Tab ───────────────────────────────────────────────
 
 
-class SslTab(ctk.CTkScrollableFrame):
+class SslTab(ctk.CTkFrame):
     """Tab displaying SSL/TLS certificate and protocol analysis results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -959,16 +942,13 @@ class SslTab(ctk.CTkScrollableFrame):
 # ─── HTTP Headers Tab ──────────────────────────────────────────
 
 
-class HeadersTab(ctk.CTkScrollableFrame):
+class HeadersTab(ctk.CTkFrame):
     """Tab displaying HTTP security headers analysis results."""
 
     def __init__(self, master: Any, data: dict[str, Any], **kwargs: Any) -> None:
         super().__init__(
             master,
             fg_color="transparent",
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=PRIMARY,
             **kwargs,
         )
 
@@ -1120,6 +1100,7 @@ class ExpandableResultCard(ctk.CTkFrame):
         )
         self.pack_propagate(False)
         self._expanded = False
+        self._accent_color = accent_color
 
         # ── Left accent bar ─────────────────────────────────────
         accent = ctk.CTkFrame(self, fg_color=accent_color, width=4, corner_radius=2)
@@ -1128,6 +1109,7 @@ class ExpandableResultCard(ctk.CTkFrame):
         # ── Main content area ───────────────────────────────────
         main_area = ctk.CTkFrame(self, fg_color="transparent")
         main_area.pack(side="left", fill="both", expand=True, padx=(14, 10), pady=8)
+        self._main_area = main_area
 
         # ── Summary row (clickable) ─────────────────────────────
         summary_row = ctk.CTkFrame(main_area, fg_color="transparent")
@@ -1172,16 +1154,17 @@ class ExpandableResultCard(ctk.CTkFrame):
         self._separator = ctk.CTkFrame(main_area, fg_color=BORDER, height=1)
         self._separator.pack_forget()
 
-        # ── Detail frame (hidden initially, scrollable) ─────────
+        # ── Detail frame (hidden initially) ─────────────────────
         self._detail_frame = ctk.CTkScrollableFrame(
             main_area,
             fg_color=BG_ELEVATED,
             corner_radius=8,
             border_width=1,
             border_color=BORDER,
-            scrollbar_fg_color=BG_ELEVATED,
-            scrollbar_button_color=BORDER,
-            scrollbar_button_hover_color=TEXT_MUTED,
+            height=350,
+            scrollbar_fg_color=BG_SURFACE,
+            scrollbar_button_color=NEUTRAL,
+            scrollbar_button_hover_color=PRIMARY_DIM,
         )
         self._detail_frame.pack_forget()
 
@@ -1196,12 +1179,208 @@ class ExpandableResultCard(ctk.CTkFrame):
             self._detail_frame.pack_forget()
             self._toggle_btn.configure(text="\u25b6  Details")
             self.configure(height=48)
+            self.pack_propagate(False)
         else:
-            self._separator.pack(fill="x", pady=(8, 0))
-            self._detail_frame.pack(fill="both", expand=True, pady=(8, 0))
-            self._toggle_btn.configure(text="\u25bc  Details")
-            self.configure(height=420)
+            self.pack_propagate(True)
+            self.configure(height=400)
+            self.after(10, self._show_detail)
+
         self._expanded = not self._expanded
+
+    def _show_detail(self) -> None:
+        """Show separator and detail after layout settles."""
+        self._separator.pack(fill="x", pady=(8, 0))
+        self._detail_frame.pack(fill="x", expand=True, pady=(8, 0))
+
+
+class ShodanTab(ctk.CTkFrame):
+    """Tab showing Shodan host lookup results."""
+
+    def __init__(self, parent: Any, data: dict[str, Any]) -> None:
+        super().__init__(
+            parent, fg_color="transparent",
+        )
+        self._build(data)
+
+    def _build(self, data: dict[str, Any]) -> None:
+        if "error" in data:
+            ctk.CTkLabel(
+                self, text=f"Error: {data['error']}",
+                font=FONT_BODY, text_color=ERROR, wraplength=500,
+            ).pack(padx=16, pady=20)
+            return
+
+        # Target header
+        target = data.get("target", "?")
+        ctk.CTkLabel(
+            self, text=f"Shodan: {target}",
+            font=FONT_TITLE, text_color=TEXT,
+        ).pack(anchor="w", padx=16, pady=(14, 12))
+
+        # Summary cards
+        cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+        cards_frame.pack(fill="x", padx=16, pady=(0, 12))
+
+        org = data.get("org", "Unknown")
+        country = data.get("country", "Unknown")
+        ports = data.get("ports", [])
+        vulns = data.get("vulns", [])
+
+        for label, value, color in [
+            ("Organization", org, PRIMARY),
+            ("Location", country, ACCENT_CYAN),
+            ("Open Ports", str(len(ports)), ACCENT_PURPLE),
+            ("Vulnerabilities", str(len(vulns)), ERROR if vulns else SUCCESS),
+        ]:
+            card = ctk.CTkFrame(cards_frame, fg_color=BG_ELEVATED, corner_radius=8, height=60)
+            card.pack(side="left", fill="both", expand=True, padx=(0, 6))
+            card.pack_propagate(False)
+            ctk.CTkLabel(card, text=label, font=FONT_SMALL, text_color=TEXT_MUTED).pack(anchor="w", padx=10, pady=(8, 0))
+            ctk.CTkLabel(card, text=value, font=("Segoe UI", 14, "bold"), text_color=color).pack(anchor="w", padx=10)
+
+        # Ports list
+        if ports:
+            ctk.CTkLabel(
+                self, text="Open Ports", font=FONT_BADGE, text_color=ACCENT_PURPLE,
+            ).pack(anchor="w", padx=16, pady=(8, 4))
+            for port in sorted(ports):
+                ctk.CTkLabel(
+                    self, text=f"  \u25b8  Port {port}/tcp",
+                    font=FONT_CODE, text_color=TEXT_SEC,
+                ).pack(anchor="w", padx=16)
+
+        # Services
+        services = data.get("services", [])
+        if services:
+            ctk.CTkLabel(
+                self, text="Services", font=FONT_BADGE, text_color=PRIMARY,
+            ).pack(anchor="w", padx=16, pady=(12, 4))
+            for svc in services:
+                port = svc.get("port", "?")
+                product = svc.get("product", "")
+                version = svc.get("version", "")
+                label = f"  \u25b8  {port}: {product} {version}".strip()
+                ctk.CTkLabel(
+                    self, text=label, font=FONT_CODE, text_color=TEXT_SEC,
+                ).pack(anchor="w", padx=16)
+
+        # Vulnerabilities
+        if vulns:
+            ctk.CTkLabel(
+                self, text="Known Vulnerabilities", font=FONT_BADGE, text_color=ERROR,
+            ).pack(anchor="w", padx=16, pady=(12, 4))
+            for cve_id in vulns[:20]:
+                ctk.CTkLabel(
+                    self, text=f"  \u25b8  {cve_id}",
+                    font=FONT_CODE, text_color=WARNING,
+                ).pack(anchor="w", padx=16)
+
+
+class CveTab(ctk.CTkFrame):
+    """Tab showing CVE lookup results."""
+
+    def __init__(self, parent: Any, data: dict[str, Any]) -> None:
+        super().__init__(
+            parent, fg_color="transparent",
+        )
+        self._build(data)
+
+    def _build(self, data: dict[str, Any]) -> None:
+        if "error" in data:
+            ctk.CTkLabel(
+                self, text=f"Error: {data['error']}",
+                font=FONT_BODY, text_color=ERROR, wraplength=500,
+            ).pack(padx=16, pady=20)
+            return
+
+        target = data.get("target", "?")
+        ctk.CTkLabel(
+            self, text=f"CVE Lookup: {target}",
+            font=FONT_TITLE, text_color=TEXT,
+        ).pack(anchor="w", padx=16, pady=(14, 12))
+
+        # Software found
+        software = data.get("software_found", [])
+        if software:
+            ctk.CTkLabel(
+                self, text="Software Detected", font=FONT_BADGE, text_color=PRIMARY,
+            ).pack(anchor="w", padx=16, pady=(0, 4))
+            for sw in software:
+                product = sw.get("product", "?")
+                version = sw.get("version", "?")
+                source = sw.get("source", "?")
+                ctk.CTkLabel(
+                    self, text=f"  \u25b8  {product} {version} (via {source})",
+                    font=FONT_CODE, text_color=TEXT_SEC,
+                ).pack(anchor="w", padx=16)
+        else:
+            ctk.CTkLabel(
+                self, text="No software versions detected for CVE lookup.",
+                font=FONT_BODY, text_color=TEXT_MUTED,
+            ).pack(padx=16, pady=20)
+            return
+
+        # Summary
+        summary = data.get("summary", {})
+        if summary:
+            cards_frame = ctk.CTkFrame(self, fg_color="transparent")
+            cards_frame.pack(fill="x", padx=16, pady=(12, 8))
+            total = summary.get("total_cves", 0)
+            crit = summary.get("critical", 0)
+            high = summary.get("high", 0)
+            med = summary.get("medium", 0)
+            low = summary.get("low", 0)
+            for label, value, color in [
+                ("Total CVEs", str(total), TEXT),
+                ("Critical", str(crit), ERROR),
+                ("High", str(high), WARNING),
+                ("Medium", str(med), ACCENT_CYAN),
+                ("Low", str(low), TEXT_MUTED),
+            ]:
+                card = ctk.CTkFrame(cards_frame, fg_color=BG_ELEVATED, corner_radius=8, height=56)
+                card.pack(side="left", fill="both", expand=True, padx=(0, 4))
+                card.pack_propagate(False)
+                ctk.CTkLabel(card, text=label, font=FONT_SMALL, text_color=TEXT_MUTED).pack(anchor="w", padx=8, pady=(6, 0))
+                ctk.CTkLabel(card, text=value, font=("Segoe UI", 13, "bold"), text_color=color).pack(anchor="w", padx=8)
+
+        # CVE list
+        cves = data.get("cves", [])
+        if cves:
+            ctk.CTkLabel(
+                self, text="Vulnerabilities Found", font=FONT_BADGE, text_color=ERROR,
+            ).pack(anchor="w", padx=16, pady=(12, 4))
+            for cve in cves[:30]:
+                cve_id = cve.get("id", "?")
+                score = cve.get("score", 0)
+                severity = cve.get("severity", "?")
+                desc = cve.get("description", "")
+                product = cve.get("product", "")
+                version = cve.get("version", "")
+
+                sev_color = {
+                    "CRITICAL": ERROR, "HIGH": WARNING,
+                    "MEDIUM": ACCENT_CYAN, "LOW": TEXT_MUTED,
+                }.get(severity.upper(), TEXT_MUTED)
+
+                row = ctk.CTkFrame(self, fg_color=BG_ELEVATED, corner_radius=8)
+                row.pack(fill="x", padx=16, pady=(0, 4))
+
+                header = ctk.CTkFrame(row, fg_color="transparent")
+                header.pack(fill="x", padx=10, pady=(8, 0))
+                ctk.CTkLabel(
+                    header, text=cve_id, font=FONT_CODE, text_color=PRIMARY,
+                ).pack(side="left")
+                ctk.CTkLabel(
+                    header, text=f"{severity} ({score})", font=FONT_SMALL, text_color=sev_color,
+                ).pack(side="right")
+                if product:
+                    ctk.CTkLabel(
+                        row, text=f"{product} {version}", font=FONT_CODE_SM, text_color=TEXT_MUTED,
+                    ).pack(anchor="w", padx=10, pady=(2, 0))
+                if desc:
+                    ctk.CTkLabel(
+                        row, text=desc, font=FONT_BODY, text_color=TEXT_SEC, wraplength=700,
+                    ).pack(anchor="w", padx=10, pady=(2, 8))
 
 
 # ─── Results Panel ──────────────────────────────────────────────
@@ -1503,6 +1682,27 @@ class ResultsPanel(ctk.CTkFrame):
                 items.append(f"{missing} missing")
             return "Security Headers", items, ACCENT_PURPLE
 
+        if plugin == "shodan":
+            ports = data.get("ports", [])
+            vulns = data.get("vulns", [])
+            org = data.get("org", "")
+            items = []
+            if org:
+                items.append(org)
+            items.append(f"{len(ports)} ports")
+            if vulns:
+                items.append(f"{len(vulns)} CVEs")
+            return "Shodan", items, ACCENT_CYAN
+
+        if plugin == "cve":
+            summary = data.get("summary", {})
+            total = summary.get("total_cves", 0)
+            crit = summary.get("critical", 0)
+            items = [f"{total} CVEs"]
+            if crit:
+                items.append(f"{crit} critical")
+            return "CVE Lookup", items, ERROR if crit else WARNING
+
         return plugin.capitalize(), ["\u2014"], TEXT_DIM
 
     # ── Detail widget factory ───────────────────────────────────
@@ -1531,6 +1731,10 @@ class ResultsPanel(ctk.CTkFrame):
                 return SslTab(parent, data)
             if plugin == "headers":
                 return HeadersTab(parent, data)
+            if plugin == "shodan":
+                return ShodanTab(parent, data)
+            if plugin == "cve":
+                return CveTab(parent, data)
 
             return ctk.CTkLabel(
                 parent,

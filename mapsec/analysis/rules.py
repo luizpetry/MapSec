@@ -104,7 +104,12 @@ def _get_hosts_ports(results: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def check_open_ports_no_https(results: dict) -> list[Finding]:
-    """Open ports found but no HTTPS/TLS service available."""
+    """Open ports found but no HTTPS/TLS service available.
+
+    Severity depends on whether the SSL plugin was also executed:
+    - SSL plugin ran and confirmed no TLS → **medium** (confirmed risk)
+    - SSL plugin did NOT run → **info** (unverified, just informational)
+    """
     ports = _get_hosts_ports(results)
     if not ports:
         return []
@@ -116,14 +121,23 @@ def check_open_ports_no_https(results: dict) -> list[Finding]:
     if has_tls:
         return []
 
+    # If the ssl plugin was run, it would have data about TLS availability.
+    # Its absence means we simply didn't check — downgrade to info.
+    ssl_ran = "ssl" in results and bool(results["ssl"])
+    severity = "medium" if ssl_ran else "info"
+
     return [
         Finding(
-            severity="medium",
+            severity=severity,
             title="No HTTPS/TLS service detected",
             description=(
                 "Open ports were found on the target but none of them appear "
                 "to be an HTTPS/TLS service (ports 443, 8443).  Data in "
                 "transit may not be encrypted."
+            ) if ssl_ran else (
+                "Open ports were found on the target but none of them appear "
+                "to be an HTTPS/TLS service (ports 443, 8443).  The SSL/TLS "
+                "plugin was not run, so this could not be confirmed."
             ),
             recommendation=(
                 "Enable HTTPS by deploying a TLS certificate on port 443 "

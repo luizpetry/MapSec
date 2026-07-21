@@ -1,4 +1,4 @@
-"""Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin, SslCheckPlugin, HttpHeadersPlugin."""
+"""Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin, SslCheckPlugin, HttpHeadersPlugin, ShodanPlugin, CveLookupPlugin."""
 
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -10,6 +10,8 @@ from mapsec.plugins.whois_lookup import WhoisPlugin
 from mapsec.plugins.banner_grab import BannerGrabPlugin
 from mapsec.plugins.ssl_check import SslCheckPlugin
 from mapsec.plugins.http_headers import HttpHeadersPlugin
+from mapsec.plugins.shodan_lookup import ShodanPlugin
+from mapsec.plugins.cve_lookup import CveLookupPlugin
 
 
 # ── NmapPlugin ────────────────────────────────────────────────────────────
@@ -584,3 +586,160 @@ class TestHttpHeadersPlugin:
 
         assert "Server" in result["leaked_headers"]
         assert "X-Powered-By" in result["leaked_headers"]
+
+
+# ── ShodanPlugin ─────────────────────────────────────────────────────
+
+
+class TestShodanPluginRegistration:
+    def test_shodan_registered(self):
+        from mapsec.core.plugin import get_plugins
+        assert "shodan" in get_plugins()
+
+    def test_shodan_name_and_description(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        p = ShodanPlugin()
+        assert p.name == "shodan"
+        assert "Shodan" in p.description
+
+
+class TestShodanPluginValidateTarget:
+    def test_validates_ip(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        assert ShodanPlugin().validate_target("8.8.8.8") is True
+
+    def test_validates_domain(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        assert ShodanPlugin().validate_target("example.com") is True
+
+    def test_rejects_empty(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        assert ShodanPlugin().validate_target("") is False
+
+    def test_rejects_garbage(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        assert ShodanPlugin().validate_target("not a target!") is False
+
+
+class TestShodanPluginRun:
+    @pytest.mark.asyncio
+    async def test_run_no_api_key(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        import os
+        old = os.environ.pop("SHODAN_API_KEY", None)
+        try:
+            result = await ShodanPlugin().run("8.8.8.8")
+            assert "error" in result
+        finally:
+            if old:
+                os.environ["SHODAN_API_KEY"] = old
+
+    @pytest.mark.asyncio
+    async def test_run_api_error(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        import os
+        os.environ["SHODAN_API_KEY"] = "test_key_12345"
+        try:
+            plugin = ShodanPlugin()
+            with patch.object(plugin, "_fetch_url", side_effect=Exception("Connection refused")):
+                result = await plugin.run("8.8.8.8")
+            assert "error" in result
+        finally:
+            os.environ.pop("SHODAN_API_KEY", None)
+
+    @pytest.mark.asyncio
+    async def test_run_successful(self):
+        from mapsec.plugins.shodan_lookup import ShodanPlugin
+        import json
+        import os
+        os.environ["SHODAN_API_KEY"] = "test_key_12345"
+        try:
+            plugin = ShodanPlugin()
+            mock_response = json.dumps({
+                "ip_str": "8.8.8.8",
+                "org": "Google LLC",
+                "isp": "Google LLC",
+                "os": None,
+                "country_name": "United States",
+                "city": "Mountain View",
+                "lat": 37.4056,
+                "lon": -122.0775,
+                "ports": [53, 443],
+                "hostnames": ["dns.google"],
+                "vulns": {"CVE-2021-44228": {"cvss": 10.0}},
+                "data": [
+                    {"port": 53, "product": "Google DNS", "version": "", "transport": "udp"},
+                    {"port": 443, "product": "nginx", "version": "1.18.0", "transport": "tcp"},
+                ],
+            })
+            with patch.object(plugin, "_fetch_url", return_value=mock_response):
+                result = await plugin.run("8.8.8.8")
+            assert result["ip"] == "8.8.8.8"
+            assert result["org"] == "Google LLC"
+            assert 53 in result["ports"]
+            assert len(result["services"]) == 2
+            assert "CVE-2021-44228" in result["vulns"]
+        finally:
+            os.environ.pop("SHODAN_API_KEY", None)
+
+
+# ── CveLookupPlugin ──────────────────────────────────────────────────
+
+
+class TestCvePluginRegistration:
+    def test_cve_registered(self):
+        from mapsec.core.plugin import get_plugins
+        assert "cve" in get_plugins()
+
+    def test_cve_name_and_description(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        p = CveLookupPlugin()
+        assert p.name == "cve"
+        assert "CVE" in p.description
+
+
+class TestCvePluginRun:
+    @pytest.mark.asyncio
+    async def test_run_no_context(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        result = await CveLookupPlugin().run("192.168.1.1")
+        assert "software_found" in result
+        assert result["software_found"] == []
+
+    @pytest.mark.asyncio
+    async def test_run_with_nmap_context_no_products(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        context = {"nmap": {"hosts": [{"ports": [{"port": 80, "service": {"name": "http", "product": "", "version": ""}}]}]}}
+        result = await CveLookupPlugin().run("192.168.1.1", context=context)
+        assert result["software_found"] == []
+
+    @pytest.mark.asyncio
+    async def test_run_extracts_from_nmap(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        context = {
+            "nmap": {"hosts": [{"ports": [
+                {"port": 22, "service": {"name": "ssh", "product": "OpenSSH", "version": "8.9p1"}},
+            ]}]},
+        }
+        plugin = CveLookupPlugin()
+        with patch.object(plugin, "_query_nvd", return_value=[]):
+            result = await plugin.run("192.168.1.1", context=context)
+        assert len(result["software_found"]) == 1
+        assert "openssh" in result["software_found"][0]["product"].lower()
+
+    @pytest.mark.asyncio
+    async def test_run_extracts_from_banner(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        context = {
+            "banner": {"banners": [
+                {"port": 80, "banner": "nginx/1.18.0"},
+            ]},
+        }
+        plugin = CveLookupPlugin()
+        with patch.object(plugin, "_query_nvd", return_value=[]):
+            result = await plugin.run("192.168.1.1", context=context)
+        assert len(result["software_found"]) >= 1
+
+    def test_validate_target_always_true(self):
+        from mapsec.plugins.cve_lookup import CveLookupPlugin
+        assert CveLookupPlugin().validate_target("anything") is True
