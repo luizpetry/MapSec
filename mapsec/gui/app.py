@@ -20,6 +20,7 @@ from mapsec.core.models import PluginResult, ScanConfig, ScanReport
 from mapsec.core.plugin import get_plugins
 from mapsec.analysis.engine import AnalysisEngine
 from mapsec.gui.results_panel import ResultsPanel
+from mapsec.i18n import t, set_language, get_language, save_language, load_language, get_available_languages
 
 # Import plugins to register them
 import mapsec.plugins.nmap_scan  # noqa: F401
@@ -99,6 +100,7 @@ class MapsecGUI(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
+        load_language()
 
         # Window config
         self.title("Mapsec \u2014 Security Reconnaissance")
@@ -143,6 +145,10 @@ class MapsecGUI(ctk.CTk):
         llm_model = self._config.get("llm_model", "")
         if llm_provider and llm_key:
             self._analysis_engine.configure_llm(llm_provider, llm_key, llm_model or None)
+
+        # Translatable widgets — must be initialized BEFORE _build_ui
+        self._translatable: dict[str, Any] = {}
+        self._last_results_dicts: list[dict[str, Any]] | None = None
 
         # Build UI
         self._build_ui()
@@ -189,9 +195,10 @@ class MapsecGUI(ctk.CTk):
         footer.pack(fill="x")
 
         self._version_label = ctk.CTkLabel(
-            footer, text="v0.1.0", font=FONT_TINY, text_color=TEXT_DIM,
+            footer, text=t("version"), font=FONT_TINY, text_color=TEXT_DIM,
         )
         self._version_label.pack(side="left")
+        self._translatable["version_footer"] = self._version_label
 
     # ── Header ──────────────────────────────────────────────────
 
@@ -236,23 +243,44 @@ class MapsecGUI(ctk.CTk):
         subtitle_frame = ctk.CTkFrame(title_row, fg_color="transparent")
         subtitle_frame.pack(side="left", padx=(12, 0), pady=(4, 0))
 
-        ctk.CTkLabel(
+        self._version_badge = ctk.CTkLabel(
             subtitle_frame,
-            text="v0.1.0",
+            text=t("version"),
             font=("Consolas", 10, "bold"),
             text_color=PRIMARY_HOVER,
             fg_color=BG_ELEVATED,
             corner_radius=4,
             width=42,
             height=18,
-        ).pack(side="left")
+        )
+        self._version_badge.pack(side="left")
+        self._translatable["version"] = self._version_badge
 
-        ctk.CTkLabel(
+        self._subtitle_label = ctk.CTkLabel(
             subtitle_frame,
-            text="Security Reconnaissance Toolkit",
+            text=t("subtitle"),
             font=FONT_SMALL,
             text_color=TEXT_DIM,
-        ).pack(side="left", padx=(8, 0))
+        )
+        self._subtitle_label.pack(side="left", padx=(8, 0))
+        self._translatable["subtitle"] = self._subtitle_label
+
+        # Language toggle button
+        self._lang_btn = ctk.CTkButton(
+            title_row,
+            text="EN" if get_language() == "en" else "PT",
+            width=40,
+            height=28,
+            font=FONT_SMALL,
+            fg_color=BG_ELEVATED,
+            border_width=1,
+            border_color=BORDER,
+            hover_color=PRIMARY_DIM,
+            text_color=TEXT,
+            corner_radius=8,
+            command=self._toggle_language,
+        )
+        self._lang_btn.pack(side="right", padx=(0, 12))
 
     # ── Scan Tab — Target Section ───────────────────────────────
 
@@ -275,9 +303,11 @@ class MapsecGUI(ctk.CTk):
         section_dot.pack(side="left", padx=(0, 8))
         section_dot.pack_propagate(False)
 
-        ctk.CTkLabel(
-            header_row, text="Target", font=FONT_SECTION, text_color=TEXT,
-        ).pack(side="left")
+        self._target_label = ctk.CTkLabel(
+            header_row, text=t("target_label"), font=FONT_SECTION, text_color=TEXT,
+        )
+        self._target_label.pack(side="left")
+        self._translatable["target_label"] = self._target_label
 
         # Input row
         input_row = ctk.CTkFrame(frame, fg_color="transparent")
@@ -285,7 +315,7 @@ class MapsecGUI(ctk.CTk):
 
         self._target_entry = ctk.CTkEntry(
             input_row,
-            placeholder_text="e.g. example.com  or  192.168.1.0/24",
+            placeholder_text=t("target_placeholder"),
             placeholder_text_color=TEXT_DIM,
             height=44,
             font=FONT_CODE,
@@ -306,7 +336,7 @@ class MapsecGUI(ctk.CTk):
 
         self._scan_btn = ctk.CTkButton(
             input_row,
-            text="\u25b6  Scan",
+            text=t("btn_scan"),
             width=110,
             height=44,
             font=("Segoe UI", 13, "bold"),
@@ -317,10 +347,11 @@ class MapsecGUI(ctk.CTk):
             command=self._start_scan,
         )
         self._scan_btn.pack(side="right")
+        self._translatable["btn_scan"] = self._scan_btn
 
         self._cancel_btn = ctk.CTkButton(
             input_row,
-            text="\u2715  Cancel",
+            text=t("btn_cancel"),
             width=95,
             height=44,
             font=FONT_BODY,
@@ -332,6 +363,7 @@ class MapsecGUI(ctk.CTk):
             command=self._cancel_scan,
         )
         self._cancel_btn.pack(side="right", padx=(0, 10))
+        self._translatable["btn_cancel"] = self._cancel_btn
 
     # ── Scan Tab — Plugins & Progress Section ───────────────────
 
@@ -354,9 +386,11 @@ class MapsecGUI(ctk.CTk):
         section_dot.pack(side="left", padx=(0, 8))
         section_dot.pack_propagate(False)
 
-        ctk.CTkLabel(
-            header_row, text="Plugins", font=FONT_SECTION, text_color=TEXT,
-        ).pack(side="left")
+        self._plugins_label = ctk.CTkLabel(
+            header_row, text=t("plugins_label"), font=FONT_SECTION, text_color=TEXT,
+        )
+        self._plugins_label.pack(side="left")
+        self._translatable["plugins_label"] = self._plugins_label
 
         # Plugins in subtle card background
         plugins_outer = ctk.CTkFrame(
@@ -373,7 +407,7 @@ class MapsecGUI(ctk.CTk):
 
         self._chk_nmap = ctk.CTkCheckBox(
             option_row1,
-            text="\u2022 nmap \u2014 port scan",
+            text=t("plugin_nmap"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -384,10 +418,11 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_nmap.pack(side="left", padx=(0, 24))
         self._chk_nmap.select()
+        self._translatable["plugin_nmap"] = self._chk_nmap
 
         self._chk_dns = ctk.CTkCheckBox(
             option_row1,
-            text="\u2022 dns \u2014 enumeration",
+            text=t("plugin_dns"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -398,10 +433,11 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_dns.pack(side="left", padx=(0, 24))
         self._chk_dns.select()
+        self._translatable["plugin_dns"] = self._chk_dns
 
         self._chk_vt = ctk.CTkCheckBox(
             option_row1,
-            text="\u2022 vt \u2014 threat intel",
+            text=t("plugin_vt"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -412,10 +448,11 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_vt.pack(side="left", padx=(0, 24))
         self._update_vt_status()
+        self._translatable["plugin_vt"] = self._chk_vt
 
         self._settings_btn = ctk.CTkButton(
             option_row1,
-            text="\u2699  Settings",
+            text=t("btn_settings"),
             width=100,
             height=32,
             font=FONT_SMALL,
@@ -428,13 +465,14 @@ class MapsecGUI(ctk.CTk):
             command=self._open_settings,
         )
         self._settings_btn.pack(side="right")
+        self._translatable["btn_settings"] = self._settings_btn
 
         option_row2 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
         option_row2.pack(fill="x", padx=14, pady=(6, 10))
 
         self._chk_whois = ctk.CTkCheckBox(
             option_row2,
-            text="\u2022 whois \u2014 registration info",
+            text=t("plugin_whois"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -444,10 +482,11 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_whois.pack(side="left", padx=(0, 24))
+        self._translatable["plugin_whois"] = self._chk_whois
 
         self._chk_banner = ctk.CTkCheckBox(
             option_row2,
-            text="\u2022 banner \u2014 identify services",
+            text=t("plugin_banner"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -457,10 +496,11 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_banner.pack(side="left", padx=(0, 24))
+        self._translatable["plugin_banner"] = self._chk_banner
 
         self._chk_ssl = ctk.CTkCheckBox(
             option_row2,
-            text="\u2022 ssl \u2014 certificate & protocols",
+            text=t("plugin_ssl"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -470,6 +510,7 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_ssl.pack(side="left", padx=(0, 24))
+        self._translatable["plugin_ssl"] = self._chk_ssl
 
         # Row 3: headers + shodan + cve
         option_row3 = ctk.CTkFrame(plugins_outer, fg_color="transparent")
@@ -477,7 +518,7 @@ class MapsecGUI(ctk.CTk):
 
         self._chk_headers = ctk.CTkCheckBox(
             option_row3,
-            text="\u2022 headers \u2014 security headers",
+            text=t("plugin_headers"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -487,10 +528,11 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_headers.pack(side="left", padx=(0, 24))
+        self._translatable["plugin_headers"] = self._chk_headers
 
         self._chk_shodan = ctk.CTkCheckBox(
             option_row3,
-            text="\u2022 shodan \u2014 IoT / device search",
+            text=t("plugin_shodan"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -501,10 +543,11 @@ class MapsecGUI(ctk.CTk):
         )
         self._chk_shodan.pack(side="left", padx=(0, 24))
         self._update_shodan_status()
+        self._translatable["plugin_shodan"] = self._chk_shodan
 
         self._chk_cve = ctk.CTkCheckBox(
             option_row3,
-            text="\u2022 cve \u2014 vulnerability lookup",
+            text=t("plugin_cve"),
             font=FONT_BODY,
             text_color=TEXT_SEC,
             fg_color=PRIMARY,
@@ -514,15 +557,17 @@ class MapsecGUI(ctk.CTk):
             checkmark_color="#ffffff",
         )
         self._chk_cve.pack(side="left", padx=(0, 24))
+        self._translatable["plugin_cve"] = self._chk_cve
 
         # Progress area
         progress_frame = ctk.CTkFrame(frame, fg_color="transparent")
         progress_frame.pack(fill="x", padx=20, pady=(0, 6))
 
         self._progress_label = ctk.CTkLabel(
-            progress_frame, text="Ready", font=FONT_SMALL, text_color=TEXT_MUTED,
+            progress_frame, text=t("ready"), font=FONT_SMALL, text_color=TEXT_MUTED,
         )
         self._progress_label.pack(anchor="w")
+        self._translatable["ready"] = self._progress_label
 
         self._progress_bar = ctk.CTkProgressBar(
             progress_frame,
@@ -540,47 +585,47 @@ class MapsecGUI(ctk.CTk):
         status_frame.pack(fill="x", padx=20, pady=(10, 16))
 
         self._status_nmap = ctk.CTkLabel(
-            status_frame, text="\u25cb nmap", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_nmap"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_nmap.pack(side="left", padx=(0, 24))
 
         self._status_dns = ctk.CTkLabel(
-            status_frame, text="\u25cb dns", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_dns"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_dns.pack(side="left", padx=(0, 24))
 
         self._status_vt = ctk.CTkLabel(
-            status_frame, text="\u25cb vt", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_vt"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_vt.pack(side="left", padx=(0, 24))
 
         self._status_whois = ctk.CTkLabel(
-            status_frame, text="\u25cb whois", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_whois"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_whois.pack(side="left", padx=(0, 24))
 
         self._status_banner = ctk.CTkLabel(
-            status_frame, text="\u25cb banner", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_banner"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_banner.pack(side="left", padx=(0, 24))
 
         self._status_ssl = ctk.CTkLabel(
-            status_frame, text="\u25cb ssl", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_ssl"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_ssl.pack(side="left", padx=(0, 24))
 
         self._status_headers = ctk.CTkLabel(
-            status_frame, text="\u25cb headers", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_headers"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_headers.pack(side="left", padx=(0, 24))
 
         self._status_shodan = ctk.CTkLabel(
-            status_frame, text="\u25cb shodan", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_shodan"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_shodan.pack(side="left", padx=(0, 24))
 
         self._status_cve = ctk.CTkLabel(
-            status_frame, text="\u25cb cve", font=FONT_CODE_SM, text_color=TEXT_DIM,
+            status_frame, text=t("status_cve"), font=FONT_CODE_SM, text_color=TEXT_DIM,
         )
         self._status_cve.pack(side="left")
 
@@ -597,9 +642,11 @@ class MapsecGUI(ctk.CTk):
         section_dot.pack(side="left", padx=(0, 8))
         section_dot.pack_propagate(False)
 
-        ctk.CTkLabel(
-            log_header, text="Activity Log", font=FONT_SECTION, text_color=TEXT,
-        ).pack(side="left")
+        self._activity_log_label = ctk.CTkLabel(
+            log_header, text=t("activity_log"), font=FONT_SECTION, text_color=TEXT,
+        )
+        self._activity_log_label.pack(side="left")
+        self._translatable["activity_log"] = self._activity_log_label
 
         self._results_text = ctk.CTkTextbox(
             self._scan_tab,
@@ -641,11 +688,12 @@ class MapsecGUI(ctk.CTk):
 
         self._results_status_label = ctk.CTkLabel(
             summary_row,
-            text="Results",
+            text=t("tab_results"),
             font=FONT_SECTION,
             text_color=TEXT,
         )
         self._results_status_label.pack(side="left")
+        self._translatable["tab_results"] = self._results_status_label
 
         self._results_target_label = ctk.CTkLabel(
             summary_row,
@@ -678,7 +726,7 @@ class MapsecGUI(ctk.CTk):
 
         self._analyze_btn = ctk.CTkButton(
             action_frame,
-            text="\U0001f50d  Analyze",
+            text=t("btn_analyze"),
             width=130,
             height=38,
             font=("Segoe UI", 12, "bold"),
@@ -690,34 +738,104 @@ class MapsecGUI(ctk.CTk):
             command=self._start_analysis,
         )
         self._analyze_btn.pack(side="left")
+        self._translatable["btn_analyze"] = self._analyze_btn
 
         # Export format buttons (right side)
         export_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
         export_frame.pack(side="right")
 
         self._export_json_btn = ctk.CTkButton(
-            export_frame, text="JSON", width=60, height=30,
+            export_frame, text=t("btn_export_json"), width=130, height=30,
             font=("Segoe UI", 10, "bold"), fg_color="#2563eb",
             hover_color="#1d4ed8", text_color="#ffffff", corner_radius=8,
             state="disabled", command=self._export_json,
         )
         self._export_json_btn.pack(side="left", padx=(0, 3))
+        self._translatable["btn_export_json"] = self._export_json_btn
 
         self._export_html_btn = ctk.CTkButton(
-            export_frame, text="HTML", width=60, height=30,
+            export_frame, text=t("btn_export_html"), width=150, height=30,
             font=("Segoe UI", 10, "bold"), fg_color="#7c3aed",
             hover_color="#6d28d9", text_color="#ffffff", corner_radius=8,
             state="disabled", command=self._export_html,
         )
         self._export_html_btn.pack(side="left", padx=(0, 3))
+        self._translatable["btn_export_html"] = self._export_html_btn
 
         self._export_pdf_btn = ctk.CTkButton(
-            export_frame, text="PDF", width=60, height=30,
+            export_frame, text=t("btn_export_pdf"), width=150, height=30,
             font=("Segoe UI", 10, "bold"), fg_color="#dc2626",
             hover_color="#b91c1c", text_color="#ffffff", corner_radius=8,
             state="disabled", command=self._export_pdf,
         )
         self._export_pdf_btn.pack(side="left")
+        self._translatable["btn_export_pdf"] = self._export_pdf_btn
+
+    # ── Language Support ────────────────────────────────────────
+
+    def _toggle_language(self) -> None:
+        """Toggle between English and Portuguese."""
+        current = get_language()
+        new_lang = "pt_BR" if current == "en" else "en"
+        set_language(new_lang)
+        save_language(new_lang)
+        self._apply_translations()
+
+    def _apply_translations(self) -> None:
+        """Update all translatable widgets with current language."""
+        # Update all stored translatable widgets
+        for key, widget in self._translatable.items():
+            try:
+                widget.configure(text=t(key))
+            except Exception:
+                pass
+
+        # Update target entry placeholder
+        try:
+            self._target_entry.configure(placeholder_text=t("target_placeholder"))
+        except Exception:
+            pass
+
+        # Update status labels
+        status_map = {
+            "nmap": self._status_nmap,
+            "dns": self._status_dns,
+            "vt": self._status_vt,
+            "whois": self._status_whois,
+            "banner": self._status_banner,
+            "ssl": self._status_ssl,
+            "headers": self._status_headers,
+            "shodan": self._status_shodan,
+            "cve": self._status_cve,
+        }
+        for name, label in status_map.items():
+            try:
+                current_text = label.cget("text")
+                # If currently idle (○), update with new translation
+                if "\u25cb" in current_text:
+                    label.configure(text=t(f"status_{name}"))
+            except Exception:
+                pass
+
+        # Update language button
+        self._lang_btn.configure(text="EN" if get_language() == "en" else "PT")
+
+        # Update tab labels in the CTkTabview
+        try:
+            self._tabview.tab("Scan").configure(text=t("tab_scan"))
+            self._tabview.tab("Results").configure(text=t("tab_results"))
+        except Exception:
+            pass
+
+        # Re-render results panel with new language
+        if self._last_results_dicts:
+            try:
+                self._results_panel.clear()
+                self._results_panel.render(self._last_results_dicts)
+                if self._analysis_report:
+                    self._results_panel.render_analysis(self._analysis_report)
+            except Exception:
+                pass
 
     def _on_results_rendered(self, info: dict[str, Any]) -> None:
         """Callback fired after ResultsPanel finishes rendering cards."""
@@ -747,7 +865,7 @@ class MapsecGUI(ctk.CTk):
             self._chk_vt.configure(text=f"\u2022 vt \u2014 {masked}")
         else:
             self._chk_vt.configure(text_color=ERROR)
-            self._chk_vt.configure(text="\u2022 vt \u2014 no API key")
+            self._chk_vt.configure(text=t("plugin_vt_no_key"))
             self._chk_vt.deselect()
 
     def _update_shodan_status(self) -> None:
@@ -759,13 +877,13 @@ class MapsecGUI(ctk.CTk):
             self._chk_shodan.configure(text=f"\u2022 shodan \u2014 {masked}")
         else:
             self._chk_shodan.configure(text_color=ERROR)
-            self._chk_shodan.configure(text="\u2022 shodan \u2014 no API key")
+            self._chk_shodan.configure(text=t("plugin_shodan_no_key"))
             self._chk_shodan.deselect()
 
     def _open_settings(self) -> None:
         """Open settings dialog for API key configuration."""
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Settings")
+        dialog.title(t("settings_title"))
         dialog.geometry("460x520")
         dialog.configure(fg_color=BG_BASE)
         dialog.transient(self)
@@ -793,12 +911,12 @@ class MapsecGUI(ctk.CTk):
 
         # Title
         ctk.CTkLabel(
-            card, text="Configuration", font=FONT_TITLE, text_color=TEXT,
+            card, text=t("settings_title"), font=FONT_TITLE, text_color=TEXT,
         ).pack(pady=(20, 4))
 
         ctk.CTkLabel(
             card,
-            text="API keys and integrations",
+            text=t("settings_api_key"),
             font=FONT_SMALL,
             text_color=TEXT_MUTED,
         ).pack(pady=(0, 14))
@@ -814,12 +932,12 @@ class MapsecGUI(ctk.CTk):
 
         # ── VT API Key ─────────────────────────────────────────
         ctk.CTkLabel(
-            scroll, text="VirusTotal API Key", font=FONT_BODY, text_color=TEXT_SEC,
+            scroll, text=t("settings_vt_key"), font=FONT_BODY, text_color=TEXT_SEC,
         ).pack(anchor="w", padx=18)
 
         vt_entry = ctk.CTkEntry(
             scroll,
-            placeholder_text="Paste your API key here",
+            placeholder_text=t("settings_paste_key"),
             width=370,
             height=36,
             font=FONT_CODE,
@@ -837,7 +955,7 @@ class MapsecGUI(ctk.CTk):
             vt_entry.insert(0, current_vt)
 
         ctk.CTkLabel(
-            scroll, text="Get a free key at virustotal.com",
+            scroll, text=t("settings_vt_hint"),
             font=FONT_TINY, text_color=TEXT_DIM,
         ).pack(anchor="w", padx=18, pady=(0, 10))
 
@@ -848,12 +966,12 @@ class MapsecGUI(ctk.CTk):
 
         # ── Shodan API Key ────────────────────────────────────
         ctk.CTkLabel(
-            scroll, text="Shodan API Key (optional)", font=FONT_BODY, text_color=TEXT_SEC,
+            scroll, text=t("settings_shodan_key"), font=FONT_BODY, text_color=TEXT_SEC,
         ).pack(anchor="w", padx=18)
 
         shodan_entry = ctk.CTkEntry(
             scroll,
-            placeholder_text="Paste your Shodan API key here",
+            placeholder_text=t("settings_paste_shodan_key"),
             width=370,
             height=36,
             font=FONT_CODE,
@@ -871,7 +989,7 @@ class MapsecGUI(ctk.CTk):
             shodan_entry.insert(0, current_shodan)
 
         ctk.CTkLabel(
-            scroll, text="Free tier available at account.shodan.io",
+            scroll, text=t("settings_shodan_hint"),
             font=FONT_TINY, text_color=TEXT_DIM,
         ).pack(anchor="w", padx=18, pady=(0, 10))
 
@@ -882,13 +1000,13 @@ class MapsecGUI(ctk.CTk):
 
         # ── LLM Provider ───────────────────────────────────────
         ctk.CTkLabel(
-            scroll, text="LLM Analysis Provider (optional)",
+            scroll, text=t("settings_llm_provider"),
             font=FONT_BODY, text_color=TEXT_SEC,
         ).pack(anchor="w", padx=18)
 
         ctk.CTkLabel(
             scroll,
-            text="For deep security analysis with AI recommendations",
+            text=t("settings_llm_hint"),
             font=FONT_TINY, text_color=TEXT_DIM,
         ).pack(anchor="w", padx=18, pady=(0, 6))
 
@@ -922,7 +1040,7 @@ class MapsecGUI(ctk.CTk):
         model_frame.pack(fill="x", padx=18, pady=(0, 6))
 
         ctk.CTkLabel(
-            model_frame, text="Model (optional)", font=FONT_SMALL, text_color=TEXT_MUTED,
+            model_frame, text=t("settings_model"), font=FONT_SMALL, text_color=TEXT_MUTED,
         ).pack(side="left")
 
         model_entry = ctk.CTkEntry(
@@ -945,7 +1063,7 @@ class MapsecGUI(ctk.CTk):
         # API Key entry
         llm_key_entry = ctk.CTkEntry(
             scroll,
-            placeholder_text="Paste your LLM API key here",
+            placeholder_text=t("settings_paste_llm_key"),
             width=370,
             height=36,
             font=FONT_CODE,
@@ -1011,7 +1129,7 @@ class MapsecGUI(ctk.CTk):
             save_config(self._config)
             self._update_vt_status()
             self._update_shodan_status()
-            status_label.configure(text="Saved", text_color=SUCCESS)
+            status_label.configure(text=t("settings_saved"), text_color=SUCCESS)
             dialog.after(800, dialog.destroy)
 
         def clear_all() -> None:
@@ -1028,23 +1146,23 @@ class MapsecGUI(ctk.CTk):
             self._update_vt_status()
             self._update_shodan_status()
             self._analysis_engine.configure_llm(None, None)
-            status_label.configure(text="All keys cleared", text_color=ERROR)
+            status_label.configure(text=t("settings_all_cleared"), text_color=ERROR)
             dialog.after(800, dialog.destroy)
 
         ctk.CTkButton(
-            btn_frame, text="Save", width=105, height=36,
+            btn_frame, text=t("btn_save"), width=105, height=36,
             font=FONT_BODY, fg_color=PRIMARY, hover_color=PRIMARY_HOVER,
             text_color="#ffffff", corner_radius=10, command=save_all,
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
-            btn_frame, text="Clear All", width=85, height=36,
+            btn_frame, text=t("btn_clear_all"), width=85, height=36,
             font=FONT_BODY, fg_color=ERROR, hover_color=ERROR_DIM,
             text_color="#ffffff", corner_radius=10, command=clear_all,
         ).pack(side="left", padx=(0, 10))
 
         ctk.CTkButton(
-            btn_frame, text="Cancel", width=85, height=36,
+            btn_frame, text=t("btn_cancel_action"), width=85, height=36,
             font=FONT_BODY, fg_color="transparent", border_width=1,
             border_color=BORDER, hover_color=BG_ELEVATED,
             text_color=TEXT_MUTED, corner_radius=10, command=dialog.destroy,
@@ -1081,7 +1199,7 @@ class MapsecGUI(ctk.CTk):
         self._cancel_btn.configure(state="normal")
         self._export_btn_state("disabled")
         self._progress_bar.set(0)
-        self._progress_label.configure(text="Scanning...")
+        self._progress_label.configure(text=t("scanning"))
 
         # Reset status labels
         for name, label in [
@@ -1242,7 +1360,7 @@ class MapsecGUI(ctk.CTk):
         self._is_scanning = False
         self._scan_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
-        self._progress_label.configure(text="Error")
+        self._progress_label.configure(text=t("error"))
         self._log_error(f"Scan failed: {error}")
 
     def _cancel_scan(self) -> None:
@@ -1250,7 +1368,7 @@ class MapsecGUI(ctk.CTk):
         self._is_scanning = False
         self._scan_btn.configure(state="normal")
         self._cancel_btn.configure(state="disabled")
-        self._progress_label.configure(text="Cancelled")
+        self._progress_label.configure(text=t("cancelled"))
         self._log_error("Scan cancelled by user.")
 
     def _start_analysis(self) -> None:
@@ -1259,7 +1377,7 @@ class MapsecGUI(ctk.CTk):
             self._log_error("No scan results to analyze.")
             return
 
-        self._analyze_btn.configure(state="disabled", text="\u23f3  Analyzing...")
+        self._analyze_btn.configure(state="disabled", text=t("btn_analyzing"))
         self._log_info("Starting security analysis...")
 
         thread = threading.Thread(target=self._run_analysis_thread, daemon=True)
@@ -1291,7 +1409,7 @@ class MapsecGUI(ctk.CTk):
     def _on_analysis_complete(self, report) -> None:
         """Handle analysis completion on main thread."""
         self._analysis_report = report
-        self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
+        self._analyze_btn.configure(state="normal", text=t("btn_analyze"))
 
         # Render analysis results
         self._results_panel.render_analysis(report)
@@ -1307,7 +1425,7 @@ class MapsecGUI(ctk.CTk):
 
     def _on_analysis_error(self, error: str) -> None:
         """Handle analysis error on main thread."""
-        self._analyze_btn.configure(state="normal", text="\U0001f50d  Analyze")
+        self._analyze_btn.configure(state="normal", text=t("btn_analyze"))
         self._log_error(f"Analysis failed: {error}")
 
     def _export_btn_state(self, state: str) -> None:
@@ -1439,6 +1557,13 @@ class MapsecGUI(ctk.CTk):
     def _render_results(self, report: ScanReport) -> None:
         """Render final scan results in the tabbed panel."""
         results_dicts = [r.model_dump() for r in report.results]
+        self._last_results_dicts = results_dicts
+
+        # Log current language for debug
+        from mapsec.i18n import get_language
+        current_lang = get_language()
+        self._log_info(f"[i18n] Language at render time: {current_lang}")
+
         self._results_panel.render(results_dicts)
 
         successful = sum(1 for r in report.results if r.success)

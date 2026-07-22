@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 import customtkinter as ctk
 from typing import Any, Callable
+from mapsec.i18n import t, get_language
+from mapsec.services.translator import CveTranslator
 
 # ─── Color Palette ──────────────────────────────────────────────
 BG_BASE       = "#0c0e14"
@@ -292,7 +295,7 @@ class NmapTab(ctk.CTkFrame):
             empty_frame = ctk.CTkFrame(self, fg_color="transparent")
             empty_frame.pack(expand=True, fill="both", pady=40)
             ctk.CTkLabel(
-                empty_frame, text="No hosts found", font=FONT_BODY, text_color=TEXT_DIM,
+                empty_frame, text=t("nmap_no_hosts"), font=FONT_BODY, text_color=TEXT_DIM,
             ).pack()
             return
 
@@ -309,15 +312,15 @@ class NmapTab(ctk.CTkFrame):
             cards_frame.columnconfigure(1, weight=1)
             cards_frame.columnconfigure(2, weight=1)
 
-            ResultCard(cards_frame, "TARGET", ip, PRIMARY).grid(
+            ResultCard(cards_frame, t("nmap_target"), ip, PRIMARY).grid(
                 row=0, column=0, sticky="ew", padx=(0, 8)
             )
             if hostname:
-                ResultCard(cards_frame, "HOSTNAME", hostname, ACCENT_PURPLE).grid(
+                ResultCard(cards_frame, t("nmap_hostname"), hostname, ACCENT_PURPLE).grid(
                     row=0, column=1, sticky="ew", padx=(0, 8)
                 )
             ResultCard(
-                cards_frame, "OPEN PORTS", str(len(ports)), SUCCESS
+                cards_frame, t("nmap_open_ports"), str(len(ports)), SUCCESS
             ).grid(row=0, column=2, sticky="ew")
 
             # Port list header with accent
@@ -329,7 +332,7 @@ class NmapTab(ctk.CTkFrame):
             header_dot.pack_propagate(False)
 
             ctk.CTkLabel(
-                header, text="Open Ports", font=FONT_SECTION, text_color=TEXT,
+                header, text=t("nmap_port_list"), font=FONT_SECTION, text_color=TEXT,
             ).pack(side="left")
 
             # Port rows
@@ -371,14 +374,14 @@ class DnsTab(ctk.CTkFrame):
         cards_frame.columnconfigure(2, weight=1)
 
         ResultCard(
-            cards_frame, "DNS RECORDS", str(total_records), PRIMARY
+            cards_frame, t("dns_total_records"), str(total_records), PRIMARY
         ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
         ResultCard(
-            cards_frame, "SUBDOMAINS", str(len(subdomains)), ACCENT_PURPLE
+            cards_frame, t("dns_subdomains"), str(len(subdomains)), ACCENT_PURPLE
         ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         a_count = len(records.get("A", []))
         ResultCard(
-            cards_frame, "IP ADDRESSES", str(a_count), SUCCESS
+            cards_frame, t("dns_unique_ips"), str(a_count), SUCCESS
         ).grid(row=0, column=2, sticky="ew")
 
         # Records by type
@@ -405,7 +408,7 @@ class DnsTab(ctk.CTkFrame):
             header_dot.pack_propagate(False)
 
             ctk.CTkLabel(
-                section_header, text=f"{rtype} Records", font=FONT_SECTION, text_color=TEXT,
+                section_header, text=f"{rtype} {t('dns_records')}", font=FONT_SECTION, text_color=TEXT,
             ).pack(side="left")
 
             for item in values[:20]:
@@ -426,7 +429,7 @@ class DnsTab(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 sub_header,
-                text="Discovered Subdomains",
+                text=t("dns_discovered_subdomains"),
                 font=FONT_SECTION,
                 text_color=TEXT,
             ).pack(side="left")
@@ -453,7 +456,7 @@ class VtTab(ctk.CTkFrame):
         if "error" in data:
             ctk.CTkLabel(
                 self,
-                text="Error",
+                text=t("results_error"),
                 font=("Segoe UI", 16, "bold"),
                 text_color=ERROR,
             ).pack(anchor="w", pady=(0, 8))
@@ -494,13 +497,13 @@ class VtTab(ctk.CTkFrame):
         cards_frame.columnconfigure(2, weight=1)
 
         ResultCard(
-            cards_frame, "MALICIOUS", str(malicious), ERROR
+            cards_frame, t("vt_malicious"), str(malicious), ERROR
         ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
         ResultCard(
-            cards_frame, "SUSPICIOUS", str(suspicious), WARNING
+            cards_frame, t("vt_suspicious"), str(suspicious), WARNING
         ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         ResultCard(
-            cards_frame, "CLEAN", str(harmless), SUCCESS
+            cards_frame, t("vt_harmless"), str(harmless), SUCCESS
         ).grid(row=0, column=2, sticky="ew")
 
         # Additional info
@@ -527,14 +530,14 @@ class VtTab(ctk.CTkFrame):
             info_dot.pack_propagate(False)
 
             ctk.CTkLabel(
-                info_header, text="Registration Info", font=FONT_SMALL, text_color=TEXT_MUTED,
+                info_header, text=t("whois_registration_info"), font=FONT_SMALL, text_color=TEXT_MUTED,
             ).pack(side="left")
 
             if registrar:
                 row = ctk.CTkFrame(info_frame, fg_color="transparent")
                 row.pack(fill="x", padx=16, pady=(10, 0))
                 ctk.CTkLabel(
-                    row, text="Registrar", font=FONT_SMALL, text_color=TEXT_DIM,
+                    row, text=t("vt_registrar"), font=FONT_SMALL, text_color=TEXT_DIM,
                 ).pack(side="left")
                 ctk.CTkLabel(
                     row,
@@ -547,7 +550,7 @@ class VtTab(ctk.CTkFrame):
                 row = ctk.CTkFrame(info_frame, fg_color="transparent")
                 row.pack(fill="x", padx=16, pady=(6, 14))
                 ctk.CTkLabel(
-                    row, text="Created", font=FONT_SMALL, text_color=TEXT_DIM,
+                    row, text=t("whois_created"), font=FONT_SMALL, text_color=TEXT_DIM,
                 ).pack(side="left")
                 ctk.CTkLabel(
                     row,
@@ -577,7 +580,7 @@ class VtTab(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 cat_header,
-                text="Categories",
+                text=t("vt_categories"),
                 font=FONT_SMALL,
                 text_color=TEXT_MUTED,
             ).pack(side="left")
@@ -629,11 +632,11 @@ class WhoisTab(ctk.CTkFrame):
         cards_frame.columnconfigure(1, weight=1)
         cards_frame.columnconfigure(2, weight=1)
 
-        ResultCard(cards_frame, "REGISTRAR", registrar or "--", PRIMARY).grid(
+        ResultCard(cards_frame, t("whois_registrar"), registrar or "--", PRIMARY).grid(
             row=0, column=0, sticky="ew", padx=(0, 8)
         )
         ResultCard(
-            cards_frame, "NAME SERVERS", str(len(name_servers)), ACCENT_PURPLE
+            cards_frame, t("whois_name_servers"), str(len(name_servers)), ACCENT_PURPLE
         ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         ResultCard(
             cards_frame, "TYPE", target_type.upper(), ACCENT_CYAN
@@ -651,24 +654,24 @@ class WhoisTab(ctk.CTkFrame):
         info_dot = ctk.CTkFrame(info_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
         info_dot.pack(side="left", padx=(0, 8))
         info_dot.pack_propagate(False)
-        ctk.CTkLabel(info_header, text="Registration Info", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+        ctk.CTkLabel(info_header, text=t("whois_registration_info"), font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
 
         if registrar:
             row = ctk.CTkFrame(info_frame, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=(10, 0))
-            ctk.CTkLabel(row, text="Registrar", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=t("whois_registrar"), font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
             ctk.CTkLabel(row, text=registrar, font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
 
         if creation_date:
             row = ctk.CTkFrame(info_frame, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=(6, 0))
-            ctk.CTkLabel(row, text="Created", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=t("whois_created"), font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
             ctk.CTkLabel(row, text=str(creation_date), font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
 
         if expiration_date:
             row = ctk.CTkFrame(info_frame, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=(6, 14))
-            ctk.CTkLabel(row, text="Expires", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+            ctk.CTkLabel(row, text=t("whois_expires"), font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
             ctk.CTkLabel(row, text=str(expiration_date), font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
 
         # Registrant info
@@ -686,12 +689,12 @@ class WhoisTab(ctk.CTkFrame):
             reg_dot = ctk.CTkFrame(reg_header, fg_color=ACCENT_PURPLE, width=4, height=14, corner_radius=2)
             reg_dot.pack(side="left", padx=(0, 8))
             reg_dot.pack_propagate(False)
-            ctk.CTkLabel(reg_header, text="Registrant", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+            ctk.CTkLabel(reg_header, text=t("whois_registrant"), font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
 
             if org:
                 row = ctk.CTkFrame(reg_frame, fg_color="transparent")
                 row.pack(fill="x", padx=16, pady=(10, 0))
-                ctk.CTkLabel(row, text="Organization", font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
+                ctk.CTkLabel(row, text=t("shodan_org"), font=FONT_SMALL, text_color=TEXT_DIM).pack(side="left")
                 ctk.CTkLabel(row, text=org, font=("Segoe UI", 11, "bold"), text_color=TEXT).pack(side="left", padx=(12, 0))
 
             if country:
@@ -707,7 +710,7 @@ class WhoisTab(ctk.CTkFrame):
             ns_dot = ctk.CTkFrame(ns_header, fg_color=ACCENT_PURPLE, width=4, height=14, corner_radius=2)
             ns_dot.pack(side="left", padx=(0, 8))
             ns_dot.pack_propagate(False)
-            ctk.CTkLabel(ns_header, text="Name Servers", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+            ctk.CTkLabel(ns_header, text=t("whois_name_servers"), font=FONT_SECTION, text_color=TEXT).pack(side="left")
 
             for ns in name_servers:
                 DnsRecordRow(self, "NS", ns).pack(fill="x", pady=4)
@@ -742,7 +745,7 @@ class BannerTab(ctk.CTkFrame):
         cards_frame.columnconfigure(1, weight=1)
 
         ResultCard(
-            cards_frame, "SERVICES FOUND", str(len(banners)), WARNING
+            cards_frame, t("banner_open_ports"), str(len(banners)), WARNING
         ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         http_count = sum(1 for b in banners if b.get("port") in (80, 443, 8080, 8443))
@@ -757,7 +760,7 @@ class BannerTab(ctk.CTkFrame):
             list_dot = ctk.CTkFrame(list_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
             list_dot.pack(side="left", padx=(0, 8))
             list_dot.pack_propagate(False)
-            ctk.CTkLabel(list_header, text="Service Banners", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+            ctk.CTkLabel(list_header, text=t("banner_service_banners"), font=FONT_SECTION, text_color=TEXT).pack(side="left")
 
         # Banner rows
         for banner in banners:
@@ -835,7 +838,7 @@ class SslTab(ctk.CTkFrame):
         is_secure = protocol.get("is_secure", False)
         proto_color = SUCCESS if is_secure else ERROR
         ResultCard(
-            cards_frame, "PROTOCOL", proto_version, proto_color
+            cards_frame, t("ssl_protocol"), proto_version, proto_color
         ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         cipher_name = cipher.get("name", "?")
@@ -843,7 +846,7 @@ class SslTab(ctk.CTkFrame):
             cipher_name = cipher_name[:18] + "..."
         cipher_color = SUCCESS if not cipher.get("is_weak", False) else ERROR
         ResultCard(
-            cards_frame, "CIPHER", cipher_name, cipher_color
+            cards_frame, t("ssl_cipher"), cipher_name, cipher_color
         ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
         days = cert.get("days_until_expiry", 0)
@@ -854,7 +857,7 @@ class SslTab(ctk.CTkFrame):
         else:
             expiry_color = ERROR
         ResultCard(
-            cards_frame, "EXPIRES", f"{days}d", expiry_color
+            cards_frame, t("ssl expiresIn"), f"{days}d", expiry_color
         ).grid(row=0, column=2, sticky="ew")
 
         # Certificate details
@@ -864,14 +867,14 @@ class SslTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(cert_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(cert_header, text="Certificate", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+            ctk.CTkLabel(cert_header, text=t("ssl_certificate"), font=FONT_SECTION, text_color=TEXT).pack(side="left")
 
             fields = [
-                ("Issuer", cert.get("issuer", "--")),
-                ("Subject", cert.get("subject", "--")),
-                ("Valid From", cert.get("valid_from", "--")),
-                ("Valid Until", cert.get("valid_until", "--")),
-                ("Serial", cert.get("serial", "--")),
+                (t("ssl_issuer"), cert.get("issuer", "--")),
+                (t("ssl_subject"), cert.get("subject", "--")),
+                (t("ssl_valid_from"), cert.get("valid_from", "--")),
+                (t("ssl_valid_to"), cert.get("valid_until", "--")),
+                (t("ssl_serial"), cert.get("serial", "--")),
             ]
             for label, value in fields:
                 row = ctk.CTkFrame(self, fg_color=BG_SURFACE, corner_radius=8, height=36)
@@ -889,7 +892,7 @@ class SslTab(ctk.CTkFrame):
             if san:
                 san_header = ctk.CTkFrame(self, fg_color="transparent")
                 san_header.pack(fill="x", pady=(12, 6))
-                ctk.CTkLabel(san_header, text="Subject Alternative Names", font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
+                ctk.CTkLabel(san_header, text=t("ssl_san"), font=FONT_SMALL, text_color=TEXT_MUTED).pack(side="left")
                 for name in san[:10]:
                     ctk.CTkLabel(
                         self, text=f"  {name}", font=FONT_CODE, text_color=ACCENT_CYAN,
@@ -900,13 +903,13 @@ class SslTab(ctk.CTkFrame):
             flags_frame.pack(fill="x", pady=(12, 0))
             if cert.get("is_expired"):
                 ctk.CTkLabel(
-                    flags_frame, text="EXPIRED", font=FONT_BADGE,
-                    fg_color=ERROR, text_color="#ffffff", corner_radius=6,
-                    width=80, height=24,
-                ).pack(side="left", padx=(0, 8))
+                flags_frame, text=t("ssl_expired"), font=FONT_BADGE,
+                fg_color=ERROR, text_color="#ffffff", corner_radius=6,
+                width=80, height=24,
+            ).pack(side="left", padx=(0, 8))
             if cert.get("is_self_signed"):
                 ctk.CTkLabel(
-                    flags_frame, text="SELF-SIGNED", font=FONT_BADGE,
+                    flags_frame, text=t("ssl_self_signed"), font=FONT_BADGE,
                     fg_color=WARNING, text_color="#ffffff", corner_radius=6,
                     width=100, height=24,
                 ).pack(side="left", padx=(0, 8))
@@ -919,7 +922,7 @@ class SslTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(weak_header, fg_color=ERROR, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(weak_header, text="Weak Protocols Detected", font=FONT_SECTION, text_color=ERROR).pack(side="left")
+            ctk.CTkLabel(weak_header, text=t("ssl_weak_protocols"), font=FONT_SECTION, text_color=ERROR).pack(side="left")
             for proto in weak:
                 ctk.CTkLabel(
                     self, text=f"  {proto}", font=FONT_CODE, text_color=ERROR,
@@ -932,7 +935,7 @@ class SslTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(warn_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(warn_header, text="Warnings", font=FONT_SECTION, text_color=WARNING).pack(side="left")
+            ctk.CTkLabel(warn_header, text=t("ssl_warnings"), font=FONT_SECTION, text_color=WARNING).pack(side="left")
             for w in warnings:
                 ctk.CTkLabel(
                     self, text=f"  {w}", font=FONT_SMALL, text_color=WARNING,
@@ -983,17 +986,17 @@ class HeadersTab(ctk.CTkFrame):
         cards_frame.columnconfigure(2, weight=1)
 
         ResultCard(
-            cards_frame, "GRADE", grade, grade_color
+            cards_frame, t("headers_grade"), grade, grade_color
         ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
         present_count = score_info.get("present_count", 0)
         ResultCard(
-            cards_frame, "PRESENT", str(present_count), SUCCESS
+            cards_frame, t("headers_present"), str(present_count), SUCCESS
         ).grid(row=0, column=1, sticky="ew", padx=(0, 8))
 
         missing_count = score_info.get("missing_count", 0)
         ResultCard(
-            cards_frame, "MISSING", str(missing_count), ERROR if missing_count > 0 else SUCCESS
+            cards_frame, t("headers_missing"), str(missing_count), ERROR if missing_count > 0 else SUCCESS
         ).grid(row=0, column=2, sticky="ew")
 
         # Headers list
@@ -1003,7 +1006,7 @@ class HeadersTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(hdr_header, fg_color=ACCENT_CYAN, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(hdr_header, text="Security Headers", font=FONT_SECTION, text_color=TEXT).pack(side="left")
+            ctk.CTkLabel(hdr_header, text=t("headers_security_headers"), font=FONT_SECTION, text_color=TEXT).pack(side="left")
 
             for name, info in headers.items():
                 present = info.get("present", False)
@@ -1047,7 +1050,7 @@ class HeadersTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(leak_header, fg_color=WARNING, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(leak_header, text="Leaked Information", font=FONT_SECTION, text_color=WARNING).pack(side="left")
+            ctk.CTkLabel(leak_header, text=t("headers_leaked"), font=FONT_SECTION, text_color=WARNING).pack(side="left")
 
             for name, value in leaked.items():
                 row = ctk.CTkFrame(self, fg_color=BG_SURFACE, corner_radius=8, height=36)
@@ -1067,7 +1070,7 @@ class HeadersTab(ctk.CTkFrame):
             dot = ctk.CTkFrame(warn_header, fg_color=ERROR, width=4, height=14, corner_radius=2)
             dot.pack(side="left", padx=(0, 8))
             dot.pack_propagate(False)
-            ctk.CTkLabel(warn_header, text="Warnings", font=FONT_SECTION, text_color=ERROR).pack(side="left")
+            ctk.CTkLabel(warn_header, text=t("headers_warnings"), font=FONT_SECTION, text_color=ERROR).pack(side="left")
             for w in warnings:
                 ctk.CTkLabel(
                     self, text=f"  {w}", font=FONT_SMALL, text_color=ERROR,
@@ -1136,7 +1139,7 @@ class ExpandableResultCard(ctk.CTkFrame):
         # Toggle button
         self._toggle_btn = ctk.CTkButton(
             summary_row,
-            text="\u25b6  Details",
+            text=t("results_details"),
             width=105,
             height=28,
             font=FONT_SMALL,
@@ -1177,7 +1180,7 @@ class ExpandableResultCard(ctk.CTkFrame):
         if self._expanded:
             self._separator.pack_forget()
             self._detail_frame.pack_forget()
-            self._toggle_btn.configure(text="\u25b6  Details")
+            self._toggle_btn.configure(text=t("results_details"))
             self.configure(height=48)
             self.pack_propagate(False)
         else:
@@ -1205,7 +1208,7 @@ class ShodanTab(ctk.CTkFrame):
     def _build(self, data: dict[str, Any]) -> None:
         if "error" in data:
             ctk.CTkLabel(
-                self, text=f"Error: {data['error']}",
+                self, text=f"{t('results_error')}: {data['error']}",
                 font=FONT_BODY, text_color=ERROR, wraplength=500,
             ).pack(padx=16, pady=20)
             return
@@ -1227,10 +1230,10 @@ class ShodanTab(ctk.CTkFrame):
         vulns = data.get("vulns", [])
 
         for label, value, color in [
-            ("Organization", org, PRIMARY),
-            ("Location", country, ACCENT_CYAN),
-            ("Open Ports", str(len(ports)), ACCENT_PURPLE),
-            ("Vulnerabilities", str(len(vulns)), ERROR if vulns else SUCCESS),
+            (t("shodan_org"), org, PRIMARY),
+            (t("shodan_country"), country, ACCENT_CYAN),
+            (t("shodan_ports"), str(len(ports)), ACCENT_PURPLE),
+            (t("shodan_vulns"), str(len(vulns)), ERROR if vulns else SUCCESS),
         ]:
             card = ctk.CTkFrame(cards_frame, fg_color=BG_ELEVATED, corner_radius=8, height=60)
             card.pack(side="left", fill="both", expand=True, padx=(0, 6))
@@ -1241,7 +1244,7 @@ class ShodanTab(ctk.CTkFrame):
         # Ports list
         if ports:
             ctk.CTkLabel(
-                self, text="Open Ports", font=FONT_BADGE, text_color=ACCENT_PURPLE,
+                self, text=t("shodan_ports"), font=FONT_BADGE, text_color=ACCENT_PURPLE,
             ).pack(anchor="w", padx=16, pady=(8, 4))
             for port in sorted(ports):
                 ctk.CTkLabel(
@@ -1253,7 +1256,7 @@ class ShodanTab(ctk.CTkFrame):
         services = data.get("services", [])
         if services:
             ctk.CTkLabel(
-                self, text="Services", font=FONT_BADGE, text_color=PRIMARY,
+                self, text=t("shodan_services"), font=FONT_BADGE, text_color=PRIMARY,
             ).pack(anchor="w", padx=16, pady=(12, 4))
             for svc in services:
                 port = svc.get("port", "?")
@@ -1267,7 +1270,7 @@ class ShodanTab(ctk.CTkFrame):
         # Vulnerabilities
         if vulns:
             ctk.CTkLabel(
-                self, text="Known Vulnerabilities", font=FONT_BADGE, text_color=ERROR,
+                self, text=t("shodan_vulns"), font=FONT_BADGE, text_color=ERROR,
             ).pack(anchor="w", padx=16, pady=(12, 4))
             for cve_id in vulns[:20]:
                 ctk.CTkLabel(
@@ -1277,25 +1280,28 @@ class ShodanTab(ctk.CTkFrame):
 
 
 class CveTab(ctk.CTkFrame):
-    """Tab showing CVE lookup results."""
+    """Tab showing CVE lookup results with optional description translation."""
 
     def __init__(self, parent: Any, data: dict[str, Any]) -> None:
         super().__init__(
             parent, fg_color="transparent",
         )
+        self._desc_labels: list[tuple[ctk.CTkLabel, str, str]] = []
+        self._translator = CveTranslator()
         self._build(data)
+        self._maybe_translate(cves=data.get("cves", []))
 
     def _build(self, data: dict[str, Any]) -> None:
         if "error" in data:
             ctk.CTkLabel(
-                self, text=f"Error: {data['error']}",
+                self, text=f"{t('results_error')}: {data['error']}",
                 font=FONT_BODY, text_color=ERROR, wraplength=500,
             ).pack(padx=16, pady=20)
             return
 
         target = data.get("target", "?")
         ctk.CTkLabel(
-            self, text=f"CVE Lookup: {target}",
+            self, text=f"{t('summary_display_cve')}: {target}",
             font=FONT_TITLE, text_color=TEXT,
         ).pack(anchor="w", padx=16, pady=(14, 12))
 
@@ -1303,19 +1309,19 @@ class CveTab(ctk.CTkFrame):
         software = data.get("software_found", [])
         if software:
             ctk.CTkLabel(
-                self, text="Software Detected", font=FONT_BADGE, text_color=PRIMARY,
+                self, text=t("cve_software"), font=FONT_BADGE, text_color=PRIMARY,
             ).pack(anchor="w", padx=16, pady=(0, 4))
             for sw in software:
                 product = sw.get("product", "?")
                 version = sw.get("version", "?")
                 source = sw.get("source", "?")
                 ctk.CTkLabel(
-                    self, text=f"  \u25b8  {product} {version} (via {source})",
+                    self, text=f"  \u25b8  {product} {version} ({t('cve_source').lower()} {source})",
                     font=FONT_CODE, text_color=TEXT_SEC,
                 ).pack(anchor="w", padx=16)
         else:
             ctk.CTkLabel(
-                self, text="No software versions detected for CVE lookup.",
+                self, text=t("analysis_no_software"),
                 font=FONT_BODY, text_color=TEXT_MUTED,
             ).pack(padx=16, pady=20)
             return
@@ -1331,11 +1337,11 @@ class CveTab(ctk.CTkFrame):
             med = summary.get("medium", 0)
             low = summary.get("low", 0)
             for label, value, color in [
-                ("Total CVEs", str(total), TEXT),
-                ("Critical", str(crit), ERROR),
-                ("High", str(high), WARNING),
-                ("Medium", str(med), ACCENT_CYAN),
-                ("Low", str(low), TEXT_MUTED),
+                (t("cve_total"), str(total), TEXT),
+                (t("cve_critical"), str(crit), ERROR),
+                (t("cve_high"), str(high), WARNING),
+                (t("cve_medium"), str(med), ACCENT_CYAN),
+                (t("cve_low"), str(low), TEXT_MUTED),
             ]:
                 card = ctk.CTkFrame(cards_frame, fg_color=BG_ELEVATED, corner_radius=8, height=56)
                 card.pack(side="left", fill="both", expand=True, padx=(0, 4))
@@ -1347,7 +1353,7 @@ class CveTab(ctk.CTkFrame):
         cves = data.get("cves", [])
         if cves:
             ctk.CTkLabel(
-                self, text="Vulnerabilities Found", font=FONT_BADGE, text_color=ERROR,
+                self, text=t("shodan_vulns"), font=FONT_BADGE, text_color=ERROR,
             ).pack(anchor="w", padx=16, pady=(12, 4))
             for cve in cves[:30]:
                 cve_id = cve.get("id", "?")
@@ -1378,9 +1384,39 @@ class CveTab(ctk.CTkFrame):
                         row, text=f"{product} {version}", font=FONT_CODE_SM, text_color=TEXT_MUTED,
                     ).pack(anchor="w", padx=10, pady=(2, 0))
                 if desc:
-                    ctk.CTkLabel(
+                    lbl = ctk.CTkLabel(
                         row, text=desc, font=FONT_BODY, text_color=TEXT_SEC, wraplength=700,
-                    ).pack(anchor="w", padx=10, pady=(2, 8))
+                    )
+                    lbl.pack(anchor="w", padx=10, pady=(2, 8))
+                    self._desc_labels.append((lbl, cve_id, desc))
+
+    def _maybe_translate(self, cves: list[dict[str, Any]]) -> None:
+        """Start background translation if language is pt_BR and translator available."""
+        if get_language() != "pt_BR":
+            return
+        if not cves or not self._desc_labels:
+            return
+        if not self._translator._translator_available:
+            return
+        threading.Thread(target=self._translate_worker, args=(cves,), daemon=True).start()
+
+    def _translate_worker(self, cves: list[dict[str, Any]]) -> None:
+        """Background thread: translate all CVE descriptions and update labels."""
+        target_lang = "pt"
+        for lbl, cve_id, original in self._desc_labels:
+            desc = ""
+            for cve in cves:
+                if cve.get("id") == cve_id:
+                    desc = cve.get("description", "")
+                    break
+            if not desc:
+                continue
+            try:
+                translated = self._translator.translate_text(desc, source="en", target=target_lang)
+                if translated and translated != original:
+                    self.after(0, lambda l=lbl, t=translated: l.configure(text=t))
+            except Exception:
+                pass
 
 
 # ─── Results Panel ──────────────────────────────────────────────
@@ -1408,15 +1444,17 @@ class ResultsPanel(ctk.CTkFrame):
         for card in self._cards:
             card.destroy()
         self._cards.clear()
+        # Force layout recalculation so the scrollable frame updates
+        self.update_idletasks()
 
     def render(self, results: list[dict[str, Any]]) -> None:
-        """Render results as expandable summary cards — one per plugin."""
+        """Render results as expandable summary cards -- one per plugin."""
         self.clear()
 
         if not results:
             ctk.CTkLabel(
                 self,
-                text="No results yet",
+                text=t("results_no_results"),
                 font=FONT_BODY,
                 text_color=TEXT_DIM,
             ).pack(expand=True, pady=40)
@@ -1445,6 +1483,9 @@ class ResultsPanel(ctk.CTkFrame):
             card.pack(fill="x", pady=(0, 10))
             self._cards.append(card)
 
+        # Force layout recalculation so the scrollable frame updates
+        self.update_idletasks()
+
         # Notify the host app that rendering is done
         if self._on_rendered:
             successful = sum(1 for r in results if r.get("success", False))
@@ -1460,10 +1501,10 @@ class ResultsPanel(ctk.CTkFrame):
         # Add an analysis card after the plugin result cards
         analysis_card = ExpandableResultCard(
             self,
-            plugin_name="Security Analysis",
+            plugin_name=t("analysis_score"),
             summary_items=[
-                f"Score: {report.score}/100",
-                f"{len(report.findings)} findings",
+                f"{t('analysis_score')}: {report.score}/100",
+                f"{len(report.findings)} {t('analysis_findings')}",
             ],
             accent_color=SUCCESS if report.score >= 80 else WARNING if report.score >= 50 else ERROR,
             detail_factory=lambda parent: self._build_analysis_detail(parent, report),
@@ -1487,7 +1528,7 @@ class ResultsPanel(ctk.CTkFrame):
         score_color = SUCCESS if report.score >= 80 else WARNING if report.score >= 50 else ERROR
         score_label = ctk.CTkLabel(
             score_frame,
-            text=f"Score: {report.score}/100",
+            text=f"{t('analysis_score')}: {report.score}/100",
             font=("Segoe UI", 20, "bold"),
             text_color=score_color,
         )
@@ -1513,10 +1554,10 @@ class ResultsPanel(ctk.CTkFrame):
             "info": TEXT_DIM,
         }
         severity_labels = {
-            "critical": "CRITICAL",
-            "high": "HIGH",
-            "medium": "MEDIUM",
-            "low": "LOW",
+            "critical": t("cve_critical").upper(),
+            "high": t("cve_high").upper(),
+            "medium": t("cve_medium").upper(),
+            "low": t("cve_low").upper(),
             "info": "INFO",
         }
 
@@ -1582,7 +1623,7 @@ class ResultsPanel(ctk.CTkFrame):
 
                     ctk.CTkLabel(
                         rec_frame,
-                        text="Recommendation: ",
+                        text=t("results_recommendation"),
                         font=FONT_CODE_SM,
                         text_color=TEXT_MUTED,
                     ).pack(side="left")
@@ -1600,7 +1641,7 @@ class ResultsPanel(ctk.CTkFrame):
                 if finding.source_plugins:
                     ctk.CTkLabel(
                         finding_frame,
-                        text=f"Source: {', '.join(finding.source_plugins)}",
+                        text=f"{t('cve_source')}: {', '.join(finding.source_plugins)}",
                         font=FONT_TINY,
                         text_color=TEXT_DIM,
                         anchor="w",
@@ -1618,7 +1659,7 @@ class ResultsPanel(ctk.CTkFrame):
         if not result.get("success", False):
             return (
                 plugin.upper(),
-                [result.get("error", "Unknown error")],
+                [result.get("error", t("summary_unknown_error"))],
                 ERROR,
             )
 
@@ -1626,7 +1667,7 @@ class ResultsPanel(ctk.CTkFrame):
             hosts = data.get("hosts", [])
             total_ports = sum(len(h.get("ports", [])) for h in hosts)
             first_ip = hosts[0].get("ip", "?") if hosts else "?"
-            return "Port Scan", [f"{total_ports} open ports", first_ip], PRIMARY
+            return t("summary_display_nmap"), [f"{total_ports} {t('summary_open_ports')}", first_ip], PRIMARY
 
         if plugin == "dns":
             records = data.get("records", {})
@@ -1635,8 +1676,8 @@ class ResultsPanel(ctk.CTkFrame):
                 len(v) if isinstance(v, list) else 0 for v in records.values()
             )
             return (
-                "DNS Enum",
-                [f"{total_records} records", f"{len(subdomains)} subdomains"],
+                t("summary_display_dns"),
+                [f"{total_records} {t('summary_records')}", f"{len(subdomains)} {t('summary_subdomains')}"],
                 ACCENT_PURPLE,
             )
 
@@ -1644,10 +1685,10 @@ class ResultsPanel(ctk.CTkFrame):
             malicious = data.get("malicious", 0)
             suspicious = data.get("suspicious", 0)
             if malicious > 0:
-                return "Threat Intel", [f"{malicious} malicious"], ERROR
+                return t("summary_display_vt"), [f"{malicious} {t('summary_malicious')}"], ERROR
             if suspicious > 0:
-                return "Threat Intel", [f"{suspicious} suspicious"], WARNING
-            return "Threat Intel", ["CLEAN"], SUCCESS
+                return t("summary_display_vt"), [f"{suspicious} {t('summary_suspicious')}"], WARNING
+            return t("summary_display_vt"), [t("summary_clean")], SUCCESS
 
         if plugin == "whois":
             registrar = data.get("registrar", "")
@@ -1656,12 +1697,12 @@ class ResultsPanel(ctk.CTkFrame):
             if registrar:
                 items.append(registrar)
             if ns_count:
-                items.append(f"{ns_count} name servers")
-            return "Whois Lookup", items if items else ["--"], ACCENT_CYAN
+                items.append(f"{ns_count} {t('summary_name_servers')}")
+            return t("summary_display_whois"), items if items else ["--"], ACCENT_CYAN
 
         if plugin == "banner":
             banners = data.get("banners", [])
-            return "Banners", [f"{len(banners)} services found"], WARNING
+            return t("summary_display_banner"), [f"{len(banners)} {t('summary_services_found')}"], WARNING
 
         if plugin == "ssl":
             cert = data.get("certificate", {})
@@ -1670,17 +1711,17 @@ class ResultsPanel(ctk.CTkFrame):
             days = cert.get("days_until_expiry", 0)
             items = [version]
             if days:
-                items.append(f"{days}d until expiry")
-            return "SSL/TLS", items, ACCENT_CYAN
+                items.append(f"{days}d {t('summary_until_expiry')}")
+            return t("summary_display_ssl"), items, ACCENT_CYAN
 
         if plugin == "headers":
             score_info = data.get("score", {})
             grade = score_info.get("grade", "?")
             missing = score_info.get("missing_count", 0)
-            items = [f"Grade {grade}"]
+            items = [f"{t('summary_grade')} {grade}"]
             if missing:
-                items.append(f"{missing} missing")
-            return "Security Headers", items, ACCENT_PURPLE
+                items.append(f"{missing} {t('summary_missing')}")
+            return t("summary_display_headers"), items, ACCENT_PURPLE
 
         if plugin == "shodan":
             ports = data.get("ports", [])
@@ -1689,19 +1730,19 @@ class ResultsPanel(ctk.CTkFrame):
             items = []
             if org:
                 items.append(org)
-            items.append(f"{len(ports)} ports")
+            items.append(f"{len(ports)} {t('summary_ports')}")
             if vulns:
-                items.append(f"{len(vulns)} CVEs")
-            return "Shodan", items, ACCENT_CYAN
+                items.append(f"{len(vulns)} {t('summary_cves')}")
+            return t("summary_display_shodan"), items, ACCENT_CYAN
 
         if plugin == "cve":
             summary = data.get("summary", {})
             total = summary.get("total_cves", 0)
             crit = summary.get("critical", 0)
-            items = [f"{total} CVEs"]
+            items = [f"{total} {t('summary_cves')}"]
             if crit:
-                items.append(f"{crit} critical")
-            return "CVE Lookup", items, ERROR if crit else WARNING
+                items.append(f"{crit} {t('summary_critical')}")
+            return t("summary_display_cve"), items, ERROR if crit else WARNING
 
         return plugin.capitalize(), ["\u2014"], TEXT_DIM
 
@@ -1715,7 +1756,7 @@ class ResultsPanel(ctk.CTkFrame):
 
         def _factory(parent: Any) -> Any:
             if not success:
-                return _build_error_detail(parent, data.get("error", "Unknown error"))
+                return _build_error_detail(parent, data.get("error", t("summary_unknown_error")))
 
             if plugin == "nmap":
                 return NmapTab(parent, data)
@@ -1766,7 +1807,7 @@ def _build_error_detail(parent: Any, message: str) -> ctk.CTkFrame:
 
     ctk.CTkLabel(
         frame,
-        text="Scan Failed",
+        text=t("analysis_scan_failed"),
         font=("Segoe UI", 16, "bold"),
         text_color=ERROR,
     ).pack()
