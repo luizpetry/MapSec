@@ -1419,6 +1419,183 @@ class CveTab(ctk.CTkFrame):
                 pass
 
 
+class ExploitTab(ctk.CTkFrame):
+    """Tab showing CVE exploit scenarios — how an attacker would exploit each CVE."""
+
+    def __init__(self, parent: Any, data: dict[str, Any]) -> None:
+        super().__init__(parent, fg_color="transparent")
+        self._scenario_labels: list[tuple[ctk.CTkLabel, str]] = []
+        self._impact_labels: list[tuple[ctk.CTkLabel, str]] = []
+        self._translator = CveTranslator()
+        self._build(data)
+        self._maybe_translate()
+
+    def _build(self, data: dict[str, Any]) -> None:
+        # data = {"target": str, "exploits": list[dict], "llm_used": bool}
+        # Each exploit dict: {cve_id, severity, score, title, exploit_scenario, impact, source}
+
+        if "error" in data:
+            ctk.CTkLabel(
+                self, text=f"{t('results_error')}: {data['error']}",
+                font=FONT_BODY, text_color=ERROR, wraplength=500,
+            ).pack(padx=16, pady=20)
+            return
+
+        target = data.get("target", "?")
+        exploits = data.get("exploits", [])
+        llm_used = data.get("llm_used", False)
+
+        # Header
+        header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        header_frame.pack(fill="x", padx=16, pady=(14, 4))
+
+        ctk.CTkLabel(
+            header_frame, text=f"{t('exploit_title')}: {target}",
+            font=FONT_TITLE, text_color=TEXT,
+        ).pack(side="left")
+
+        source_text = "AI-powered" if llm_used else "Pattern-based"
+        source_color = ACCENT_PURPLE if llm_used else TEXT_MUTED
+        ctk.CTkLabel(
+            header_frame, text=source_text, font=FONT_BADGE, text_color=source_color,
+        ).pack(side="right")
+
+        if not exploits:
+            ctk.CTkLabel(
+                self, text=t("exploit_no_cves"),
+                font=FONT_BODY, text_color=TEXT_MUTED,
+            ).pack(padx=16, pady=20)
+            return
+
+        # Group by severity
+        severity_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        severity_colors = {
+            "CRITICAL": ERROR, "HIGH": WARNING, "MEDIUM": ACCENT_CYAN,
+            "LOW": TEXT_MUTED, "INFO": TEXT_DIM,
+        }
+
+        grouped: dict[str, list] = {}
+        for exp in exploits:
+            sev = exp.get("severity", "INFO").upper()
+            grouped.setdefault(sev, []).append(exp)
+
+        for sev in severity_order:
+            items = grouped.get(sev, [])
+            if not items:
+                continue
+
+            # Severity section header
+            sev_color = severity_colors.get(sev, TEXT_MUTED)
+            section = ctk.CTkFrame(self, fg_color="transparent")
+            section.pack(fill="x", padx=16, pady=(10, 4))
+
+            # Colored dot + severity label
+            dot = ctk.CTkFrame(section, fg_color=sev_color, width=8, height=8, corner_radius=4)
+            dot.pack(side="left", padx=(0, 6))
+
+            ctk.CTkLabel(
+                section,
+                text=f"{sev} ({len(items)})",
+                font=FONT_SECTION, text_color=sev_color,
+            ).pack(side="left")
+
+            # Exploit cards
+            for exp in items:
+                card = ctk.CTkFrame(
+                    self, fg_color=BG_ELEVATED, corner_radius=10,
+                    border_width=1, border_color=BORDER,
+                )
+                card.pack(fill="x", padx=16, pady=(0, 6))
+
+                # Card header: CVE ID + title
+                card_header = ctk.CTkFrame(card, fg_color="transparent")
+                card_header.pack(fill="x", padx=12, pady=(10, 2))
+
+                ctk.CTkLabel(
+                    card_header, text=exp.get("cve_id", "?"),
+                    font=FONT_CODE_B, text_color=PRIMARY,
+                ).pack(side="left")
+
+                score = exp.get("score", 0)
+                ctk.CTkLabel(
+                    card_header, text=f"CVSS {score}",
+                    font=FONT_BADGE, text_color=sev_color,
+                ).pack(side="right")
+
+                # Title
+                ctk.CTkLabel(
+                    card, text=exp.get("title", ""),
+                    font=("Segoe UI", 12, "bold"), text_color=TEXT,
+                    wraplength=700, anchor="w", justify="left",
+                ).pack(fill="x", padx=12, pady=(2, 4))
+
+                # Separator
+                ctk.CTkFrame(card, fg_color=BORDER, height=1).pack(
+                    fill="x", padx=12, pady=(0, 6),
+                )
+
+                # "How an attacker exploits this:" label
+                ctk.CTkLabel(
+                    card, text=t("exploit_how"),
+                    font=FONT_SMALL, text_color=TEXT_MUTED,
+                ).pack(anchor="w", padx=12)
+
+                # Exploit scenario
+                scenario_lbl = ctk.CTkLabel(
+                    card, text=exp.get("exploit_scenario", ""),
+                    font=FONT_BODY, text_color=TEXT_SEC,
+                    wraplength=700, anchor="w", justify="left",
+                )
+                scenario_lbl.pack(fill="x", padx=12, pady=(2, 6))
+                self._scenario_labels.append((scenario_lbl, exp.get("exploit_scenario", "")))
+
+                # Impact
+                ctk.CTkLabel(
+                    card, text=t("exploit_impact"),
+                    font=FONT_SMALL, text_color=TEXT_MUTED,
+                ).pack(anchor="w", padx=12)
+
+                impact_lbl = ctk.CTkLabel(
+                    card, text=exp.get("impact", ""),
+                    font=FONT_BODY, text_color=WARNING,
+                    wraplength=700, anchor="w", justify="left",
+                )
+                impact_lbl.pack(fill="x", padx=12, pady=(2, 10))
+                self._impact_labels.append((impact_lbl, exp.get("impact", "")))
+
+    def _maybe_translate(self) -> None:
+        """Start background translation if language is pt_BR and translator available."""
+        if get_language() != "pt_BR":
+            return
+        if not self._scenario_labels and not self._impact_labels:
+            return
+        if not self._translator._translator_available:
+            return
+        threading.Thread(target=self._translate_worker, daemon=True).start()
+
+    def _translate_worker(self) -> None:
+        """Background thread: translate all scenario/impact texts and update labels."""
+        target_lang = "pt"
+        for lbl, original in self._scenario_labels:
+            if not original:
+                continue
+            try:
+                translated = self._translator.translate_text(original, source="en", target=target_lang)
+                if translated and translated != original:
+                    self.after(0, lambda l=lbl, t=translated: l.configure(text=t))
+            except Exception:
+                pass
+        for lbl, original in self._impact_labels:
+            if not original:
+                continue
+            try:
+                translated = self._translator.translate_text(original, source="en", target=target_lang)
+                if translated and translated != original:
+                    self.after(0, lambda l=lbl, t=translated: l.configure(text=t))
+            except Exception:
+                pass
+
+
 # ─── Results Panel ──────────────────────────────────────────────
 
 
@@ -1744,6 +1921,10 @@ class ResultsPanel(ctk.CTkFrame):
                 items.append(f"{crit} {t('summary_critical')}")
             return t("summary_display_cve"), items, ERROR if crit else WARNING
 
+        if plugin == "exploit":
+            count = len(data.get("exploits", []))
+            return t("summary_display_exploit"), [f"{count} {t('summary_cves')}"], ERROR
+
         return plugin.capitalize(), ["\u2014"], TEXT_DIM
 
     # ── Detail widget factory ───────────────────────────────────
@@ -1776,6 +1957,8 @@ class ResultsPanel(ctk.CTkFrame):
                 return ShodanTab(parent, data)
             if plugin == "cve":
                 return CveTab(parent, data)
+            if plugin == "exploit":
+                return ExploitTab(parent, data)
 
             return ctk.CTkLabel(
                 parent,

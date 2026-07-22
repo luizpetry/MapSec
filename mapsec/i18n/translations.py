@@ -171,6 +171,14 @@ EN = {
     "cve_severity": "Severity",
     "cve_source": "Source",
 
+    # Results panel - Exploit
+    "exploit_title": "Exploit Scenarios",
+    "exploit_how": "How an attacker exploits this:",
+    "exploit_impact": "Potential impact:",
+    "exploit_no_cves": "No CVEs to analyze. Run the CVE plugin first.",
+    "exploit_source_llm": "AI-powered",
+    "exploit_source_template": "Pattern-based",
+
     # Results panel - common
     "results_recommendation": "Recommendation: ",
     "results_error": "Error",
@@ -186,6 +194,7 @@ EN = {
     "summary_display_headers": "Security Headers",
     "summary_display_shodan": "Shodan",
     "summary_display_cve": "CVE Lookup",
+    "summary_display_exploit": "Exploit Scenarios",
 
     # Summary card metric strings
     "summary_open_ports": "open ports",
@@ -386,6 +395,14 @@ PT_BR = {
     "cve_severity": "Severidade",
     "cve_source": "Fonte",
 
+    # Results panel - Exploit
+    "exploit_title": "Cen\u00e1rios de Explora\u00e7\u00e3o",
+    "exploit_how": "Como um atacante explora isso:",
+    "exploit_impact": "Impacto potencial:",
+    "exploit_no_cves": "Nenhuma CVE para analisar. Execute o plugin CVE primeiro.",
+    "exploit_source_llm": "Gerado por IA",
+    "exploit_source_template": "Baseado em padr\u00f5es",
+
     # Results panel - common
     "results_recommendation": "Recomenda\u00e7\u00e3o: ",
     "results_error": "Erro",
@@ -401,6 +418,7 @@ PT_BR = {
     "summary_display_headers": "Cabe\u00e7alhos de Seguran\u00e7a",
     "summary_display_shodan": "Shodan",
     "summary_display_cve": "Consulta CVE",
+    "summary_display_exploit": "Cen\u00e1rios de Explora\u00e7\u00e3o",
 
     # Summary card metric strings
     "summary_open_ports": "portas abertas",

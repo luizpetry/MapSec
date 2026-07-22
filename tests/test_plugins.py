@@ -1,6 +1,7 @@
 """Tests for built-in plugins: NmapPlugin, DnsPlugin, WhoisPlugin, BannerGrabPlugin, SslCheckPlugin, HttpHeadersPlugin, ShodanPlugin, CveLookupPlugin."""
 
-from unittest.mock import AsyncMock, Mock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -12,6 +13,7 @@ from mapsec.plugins.ssl_check import SslCheckPlugin
 from mapsec.plugins.http_headers import HttpHeadersPlugin
 from mapsec.plugins.shodan_lookup import ShodanPlugin
 from mapsec.plugins.cve_lookup import CveLookupPlugin
+from mapsec.services.exploit_advisor import ExploitAdvisor
 
 
 # ── NmapPlugin ────────────────────────────────────────────────────────────
@@ -743,3 +745,311 @@ class TestCvePluginRun:
     def test_validate_target_always_true(self):
         from mapsec.plugins.cve_lookup import CveLookupPlugin
         assert CveLookupPlugin().validate_target("anything") is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ExploitAdvisor Tests
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestExploitAdvisor:
+    """Tests for the ExploitAdvisor service — template and LLM modes."""
+
+    # ------------------------------------------------------------------
+    # Template matching (no LLM)
+    # ------------------------------------------------------------------
+
+    def test_template_xss(self):
+        """CVE with 'XSS' in description matches xss template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+            "description": "Cross-Site Scripting (XSS) in search functionality",
+            "product": "WebApp", "version": "1.0",
+        }]
+        result = advisor.analyze(cves)
+        assert len(result) == 1
+        assert "XSS" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_sql_injection(self):
+        """CVE with 'SQL injection' in description matches sql_injection template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0002", "score": 9.0, "severity": "critical",
+            "description": "SQL injection vulnerability in login form",
+            "product": "DBApp", "version": "2.0",
+        }]
+        result = advisor.analyze(cves)
+        assert "SQL Injection" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_rce(self):
+        """CVE with 'remote code execution' in description matches rce template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0003", "score": 10.0, "severity": "critical",
+            "description": "Remote code execution in file parser",
+            "product": "CoreLib", "version": "1.5",
+        }]
+        result = advisor.analyze(cves)
+        assert "Remote Code Execution" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_command_injection(self):
+        """CVE with 'command injection' in description matches command_injection template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0004", "score": 8.0, "severity": "high",
+            "description": "Command injection in file upload endpoint",
+            "product": "UploadSvc", "version": "3.0",
+        }]
+        result = advisor.analyze(cves)
+        assert "Command Injection" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_path_traversal(self):
+        """CVE with 'path traversal' in description matches path_traversal template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0005", "score": 6.5, "severity": "medium",
+            "description": "Path traversal vulnerability in download feature",
+            "product": "FileSrv", "version": "1.0",
+        }]
+        result = advisor.analyze(cves)
+        assert "Traversal" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_lfi(self):
+        """CVE with 'local file inclusion' in description matches lfi template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0006", "score": 7.0, "severity": "high",
+            "description": "Local file inclusion via insecure parameter",
+            "product": "CMS", "version": "2.1",
+        }]
+        result = advisor.analyze(cves)
+        assert "Local File Inclusion" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_sqli(self):
+        """CVE with 'sqli' keyword (case-insensitive) matches sql_injection template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0007", "score": 9.0, "severity": "critical",
+            "description": "SQLi in search parameter allows data extraction",
+            "product": "SearchApp", "version": "1.0",
+        }]
+        result = advisor.analyze(cves)
+        assert "SQL Injection" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_no_match(self):
+        """Generic CVE with no known keywords falls back to default (rce) template."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0008", "score": 5.0, "severity": "medium",
+            "description": "A generic security vulnerability in module X",
+            "product": "GenericApp", "version": "1.0",
+        }]
+        result = advisor.analyze(cves)
+        # Default fallback is the rce template
+        assert "Remote Code Execution" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_template_multiple_cves(self):
+        """Multiple CVEs with different keywords are each matched correctly."""
+        advisor = ExploitAdvisor()
+        cves = [
+            {"id": "CVE-2024-0010", "score": 7.5, "severity": "high",
+             "description": "XSS in search", "product": "P1", "version": "1.0"},
+            {"id": "CVE-2024-0011", "score": 9.0, "severity": "critical",
+             "description": "SQL injection in login", "product": "P2", "version": "2.0"},
+            {"id": "CVE-2024-0012", "score": 5.0, "severity": "medium",
+             "description": "Generic bug with no keywords", "product": "P3", "version": "3.0"},
+        ]
+        result = advisor.analyze(cves)
+        assert len(result) == 3
+        assert "XSS" in result[0]["title"]
+        assert "SQL Injection" in result[1]["title"]
+        assert "Remote Code Execution" in result[2]["title"]  # default fallback
+
+    def test_template_empty_cves(self):
+        """Empty CVE list returns empty list in template mode."""
+        advisor = ExploitAdvisor()
+        result = advisor.analyze([])
+        assert result == []
+
+    def test_template_severity_ordering(self):
+        """Output preserves input order — critical CVEs come before info CVEs."""
+        advisor = ExploitAdvisor()
+        cves = [
+            {"id": "CVE-2024-0020", "score": 9.5, "severity": "critical",
+             "description": "RCE in core", "product": "App", "version": "1.0"},
+            {"id": "CVE-2024-0021", "score": 5.0, "severity": "medium",
+             "description": "XSS in search", "product": "App", "version": "1.0"},
+            {"id": "CVE-2024-0022", "score": 2.0, "severity": "info",
+             "description": "Information leak in debug mode", "product": "App", "version": "1.0"},
+        ]
+        result = advisor.analyze(cves)
+        assert len(result) == 3
+        assert result[0]["severity"] == "critical"
+        assert result[1]["severity"] == "medium"
+        assert result[2]["severity"] == "info"
+
+    # ------------------------------------------------------------------
+    # LLM mode (mocked)
+    # ------------------------------------------------------------------
+
+    def test_llm_success(self):
+        """LLM returns valid JSON — exploits parsed correctly with source='llm'."""
+        mock_provider = MagicMock()
+        mock_provider.api_key = "test-key"
+        mock_provider.model = "test-model"
+        advisor = ExploitAdvisor(llm_provider=mock_provider)
+
+        llm_response = json.dumps([
+            {
+                "cve_id": "CVE-2024-0001",
+                "exploit_scenario": "The attacker sends a crafted payload to exploit the buffer overflow",
+                "impact": "Full system compromise",
+            }
+        ])
+
+        with patch.object(advisor, "_call_llm", return_value=llm_response):
+            cves = [{
+                "id": "CVE-2024-0001", "score": 9.5, "severity": "critical",
+                "description": "Buffer overflow in network daemon",
+                "product": "NetSvc", "version": "1.0",
+            }]
+            result = advisor.analyze(cves)
+
+        assert len(result) == 1
+        assert result[0]["cve_id"] == "CVE-2024-0001"
+        assert result[0]["severity"] == "critical"
+        assert result[0]["score"] == 9.5
+        assert result[0]["exploit_scenario"] == (
+            "The attacker sends a crafted payload to exploit the buffer overflow"
+        )
+        assert result[0]["impact"] == "Full system compromise"
+        assert result[0]["source"] == "llm"
+
+    def test_llm_markdown_fences(self):
+        """LLM response wrapped in ```json fences is still parsed correctly."""
+        mock_provider = MagicMock()
+        mock_provider.api_key = "test-key"
+        mock_provider.model = "test-model"
+        advisor = ExploitAdvisor(llm_provider=mock_provider)
+
+        llm_response = """Here is the exploit analysis:
+```json
+[
+    {"cve_id": "CVE-2024-0001", "exploit_scenario": "XSS attack via form input", "impact": "Session hijacking"}
+]
+```
+"""
+
+        with patch.object(advisor, "_call_llm", return_value=llm_response):
+            cves = [{
+                "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+                "description": "XSS vulnerability", "product": "WebApp", "version": "2.0",
+            }]
+            result = advisor.analyze(cves)
+
+        assert len(result) == 1
+        assert result[0]["source"] == "llm"
+        assert "XSS attack" in result[0]["exploit_scenario"]
+
+    def test_llm_invalid_response(self):
+        """LLM returns garbage JSON — falls back to template mode."""
+        mock_provider = MagicMock()
+        mock_provider.api_key = "test-key"
+        mock_provider.model = "test-model"
+        advisor = ExploitAdvisor(llm_provider=mock_provider)
+
+        with patch.object(advisor, "_call_llm", return_value="This is not JSON at all"):
+            cves = [{
+                "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+                "description": "XSS in search", "product": "WebApp", "version": "1.0",
+            }]
+            result = advisor.analyze(cves)
+
+        # Falls back to template matching
+        assert result[0]["source"] == "template"
+        assert "XSS" in result[0]["title"]
+
+    def test_llm_http_error(self):
+        """LLM HTTP request fails (_call_llm returns None) — falls back to templates."""
+        mock_provider = MagicMock()
+        mock_provider.api_key = "test-key"
+        mock_provider.model = "test-model"
+        advisor = ExploitAdvisor(llm_provider=mock_provider)
+
+        with patch.object(advisor, "_call_llm", return_value=None):
+            cves = [{
+                "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+                "description": "XSS in search", "product": "WebApp", "version": "1.0",
+            }]
+            result = advisor.analyze(cves)
+
+        assert result[0]["source"] == "template"
+
+    def test_llm_none_provider(self):
+        """No LLM provider configured — templates used exclusively."""
+        advisor = ExploitAdvisor(llm_provider=None)
+        cves = [{
+            "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+            "description": "XSS in search", "product": "WebApp", "version": "1.0",
+        }]
+        result = advisor.analyze(cves)
+        assert result[0]["source"] == "template"
+        # Verify _call_llm is never invoked when LLM is absent
+        with patch.object(advisor, "_call_llm", side_effect=RuntimeError("should not be called")):
+            result2 = advisor.analyze(cves)
+        assert result2[0]["source"] == "template"
+
+    # ------------------------------------------------------------------
+    # Edge cases
+    # ------------------------------------------------------------------
+
+    def test_no_cves_empty(self):
+        """Empty CVE list with LLM configured still returns empty list immediately."""
+        mock_provider = MagicMock()
+        mock_provider.api_key = "test-key"
+        mock_provider.model = "test-model"
+        advisor = ExploitAdvisor(llm_provider=mock_provider)
+
+        # Patch to verify LLM is never called for empty input
+        with patch.object(advisor, "_call_llm", side_effect=RuntimeError("should not be called")):
+            result = advisor.analyze([])
+
+        assert result == []
+
+    def test_cve_missing_description(self):
+        """CVE dict missing 'description' field — empty string used, default template applied."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "id": "CVE-2024-0001", "score": 7.5, "severity": "high",
+            "product": "App", "version": "1.0",
+            # no "description" key
+        }]
+        result = advisor.analyze(cves)
+        assert len(result) == 1
+        assert result[0]["cve_id"] == "CVE-2024-0001"
+        # Empty description matches no keywords → default (rce) template
+        assert "Remote Code Execution" in result[0]["title"]
+        assert result[0]["source"] == "template"
+
+    def test_cve_missing_id(self):
+        """CVE dict missing 'id' field — defaults to empty string."""
+        advisor = ExploitAdvisor()
+        cves = [{
+            "score": 7.5, "severity": "high",
+            "description": "XSS vulnerability in product",
+            "product": "App", "version": "1.0",
+            # no "id" key
+        }]
+        result = advisor.analyze(cves)
+        assert len(result) == 1
+        assert result[0]["cve_id"] == ""
+        assert result[0]["source"] == "template"

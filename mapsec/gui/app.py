@@ -21,6 +21,8 @@ from mapsec.core.plugin import get_plugins
 from mapsec.analysis.engine import AnalysisEngine
 from mapsec.gui.results_panel import ResultsPanel
 from mapsec.i18n import t, set_language, get_language, save_language, load_language, get_available_languages
+from mapsec.analysis.llm_providers import get_provider
+from mapsec.services.exploit_advisor import ExploitAdvisor
 
 # Import plugins to register them
 import mapsec.plugins.nmap_scan  # noqa: F401
@@ -135,6 +137,8 @@ class MapsecGUI(ctk.CTk):
         # State
         self._scan_report: ScanReport | None = None
         self._analysis_report = None  # AnalysisReport | None
+        self._exploit_advisor = ExploitAdvisor()
+        self._last_exploit_data = None
         self._is_scanning = False
         self._scan_thread: threading.Thread | None = None
         self._analysis_engine = AnalysisEngine()
@@ -740,6 +744,23 @@ class MapsecGUI(ctk.CTk):
         self._analyze_btn.pack(side="left")
         self._translatable["btn_analyze"] = self._analyze_btn
 
+        # Analyze Exploits button (purple)
+        btn_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
+        btn_frame.pack(side="left", padx=(8, 0))
+
+        self._exploit_btn = ctk.CTkButton(
+            btn_frame,
+            text=t("exploit_title"),
+            font=FONT_SMALL,
+            fg_color=ACCENT_PURPLE,
+            hover_color="#8b6cf6",
+            height=32,
+            corner_radius=8,
+            state="disabled",
+            command=self._start_exploit_analysis,
+        )
+        self._exploit_btn.pack(side="left", padx=(0, 8))
+
         # Export format buttons (right side)
         export_frame = ctk.CTkFrame(action_frame, fg_color="transparent")
         export_frame.pack(side="right")
@@ -850,6 +871,7 @@ class MapsecGUI(ctk.CTk):
 
         # Enable Analyze button
         self._analyze_btn.configure(state="normal")
+        self._exploit_btn.configure(state="normal")
 
         # Auto-switch to Results tab
         self._tabview.set("Results")
@@ -1120,11 +1142,20 @@ class MapsecGUI(ctk.CTk):
                 self._analysis_engine.configure_llm(
                     prov_val, llm_val, mdl_val or None
                 )
+                # Configure exploit advisor LLM
+                provider_name = provider_var.get()
+                if provider_name != "none":
+                    self._exploit_advisor = ExploitAdvisor(
+                        llm_provider=get_provider(provider_name, llm_val, mdl_val or None)
+                    )
+                else:
+                    self._exploit_advisor = ExploitAdvisor()
             else:
                 self._config.pop("llm_provider", None)
                 self._config.pop("llm_api_key", None)
                 self._config.pop("llm_model", None)
                 self._analysis_engine.configure_llm(None, None)
+                self._exploit_advisor = ExploitAdvisor()
 
             save_config(self._config)
             self._update_vt_status()
@@ -1220,6 +1251,8 @@ class MapsecGUI(ctk.CTk):
 
         # Clear results
         self._clear_results()
+        self._last_exploit_data = None
+        self._exploit_btn.configure(state="disabled")
         self._log_info(
             f"Starting scan: {target} ({len(plugins)} plugin"
             f"{'s' if len(plugins) != 1 else ''})"
@@ -1427,6 +1460,83 @@ class MapsecGUI(ctk.CTk):
         """Handle analysis error on main thread."""
         self._analyze_btn.configure(state="normal", text=t("btn_analyze"))
         self._log_error(f"Analysis failed: {error}")
+
+    # ══════════════════════════════════════════════════════════════
+    #  Exploit Analysis
+    # ══════════════════════════════════════════════════════════════
+
+    def _start_exploit_analysis(self) -> None:
+        """Start exploit analysis in background thread."""
+        if self._last_results_dicts is None:
+            return
+        self._exploit_btn.configure(state="disabled", text=t("analysis_running"))
+        thread = threading.Thread(target=self._run_exploit_thread, daemon=True)
+        thread.start()
+
+    def _run_exploit_thread(self) -> None:
+        """Run exploit analysis in background thread."""
+        try:
+            # Extract CVEs from results
+            cves = []
+            if isinstance(self._last_results_dicts, list):
+                for item in self._last_results_dicts:
+                    plugin_name = item.get("plugin", "")
+                    if plugin_name == "cve" and isinstance(item.get("data"), dict):
+                        cves = item["data"].get("cves", [])
+                        break
+
+            if not cves:
+                self.after(0, lambda: self._on_exploit_complete([], False))
+                return
+
+            target = self._target_entry.get()
+            exploits = self._exploit_advisor.analyze(cves)
+
+            result_data = {
+                "target": target,
+                "exploits": exploits,
+                "llm_used": self._exploit_advisor._llm is not None,
+            }
+            self.after(0, lambda: self._on_exploit_complete(result_data, True))
+        except Exception as exc:
+            self.after(0, lambda: self._on_exploit_error(str(exc)))
+
+    def _on_exploit_complete(self, data: dict | list, success: bool) -> None:
+        """Handle exploit analysis completion."""
+        self._exploit_btn.configure(
+            state="normal",
+            text=t("exploit_title"),
+        )
+        if success and data:
+            self._last_exploit_data = data
+            # Add to results dicts and re-render
+            if self._last_results_dicts is not None:
+                if isinstance(data, dict):
+                    self._last_results_dicts.append(
+                        {"plugin": "exploit", "data": data, "success": True}
+                    )
+                self._render_exploit_only(data)
+                exploit_count = len(data.get("exploits", [])) if isinstance(data, dict) else 0
+                self._log_success(f"{t('exploit_title')}: {exploit_count} scenarios")
+
+    def _render_exploit_only(self, data: dict) -> None:
+        """Re-render the results panel with exploit data injected."""
+        if not self._scan_report:
+            return
+        self._results_panel.clear()
+        self._results_panel.render(self._last_results_dicts)
+        if self._analysis_report:
+            self._results_panel.render_analysis(self._analysis_report)
+
+    def _on_exploit_error(self, error: str) -> None:
+        """Handle exploit analysis error."""
+        self._exploit_btn.configure(
+            state="normal",
+            text=t("exploit_title"),
+        )
+        self._log_error(f"{t('exploit_title')}: {error}")
+
+    # ══════════════════════════════════════════════════════════════
 
     def _export_btn_state(self, state: str) -> None:
         """Enable or disable all export buttons."""
