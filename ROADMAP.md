@@ -9,7 +9,7 @@ Future features and improvements planned for the project.
 - [x] **Banner Grabbing** — collect service banners from open ports
 - [x] **Unit Tests** (pytest) — tests for plugins, engine, models
 
-## Phase 2: Security Plugins ✅
+## Phase 2: Security Plugins + Analysis ✅
 - [x] **SSL/TLS Check** — certificate analysis, protocols, vulnerabilities
 - [x] **HTTP Headers** — security headers check (CSP, HSTS, X-Frame-Options, etc.)
 - [x] **Security Analysis Engine** — automatic rules-based + optional LLM analysis
@@ -17,11 +17,12 @@ Future features and improvements planned for the project.
 ## Phase 3: Export & Reports ✅
 - [x] **HTML Report** — professional dark-theme report with collapsible sections, SVG score gauge
 - [x] **PDF Export** — printable report via reportlab (title page, executive summary, findings table)
-- [x] ~~**CSV Export**~~ — removed per user request
 
-## Phase 4: Threat Intelligence
-- [ ] **Shodan** — IoT/device search on exposed services
-- [ ] **CVE Lookup** — vulnerability database integration (NVD API)
+## Phase 4: Threat Intelligence + i18n ✅
+- [x] **Shodan** — IoT/device search on exposed services
+- [x] **CVE Lookup** — vulnerability database integration (NVD API)
+- [x] **i18n** — English + Portuguese (BR) translation system
+- [x] **CVE Translation** — auto-translate CVE descriptions via Google Translate (deep-translator)
 
 ## Phase 5: Scan Management
 - [ ] **Scan Profiles** — quick / full / stealth presets

@@ -11,6 +11,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+build_temp/
 *.egg
 
 # IDE
@@ -22,6 +23,10 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# PyInstaller build artifacts
+Mapsec.exe
+Mapsec.spec
 
 # Project
 *.json
