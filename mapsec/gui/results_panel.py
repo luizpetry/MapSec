@@ -47,6 +47,56 @@ FONT_BADGE     = ("Segoe UI", 9, "bold")
 FONT_BADGE_SM  = ("Segoe UI", 8, "bold")
 
 
+# ─── Copy utility ────────────────────────────────────────────────
+import tkinter as tk
+
+
+def _collect_text(widget: ctk.CTkBaseClass) -> str:
+    """Recursively collect all visible text from a widget tree."""
+    parts: list[str] = []
+    if isinstance(widget, ctk.CTkLabel):
+        txt = widget.cget("text")
+        if txt and txt.strip():
+            parts.append(txt.strip())
+    for child in widget.winfo_children():
+        parts.append(_collect_text(child))
+    return "\n".join(p for p in parts if p)
+
+
+def _show_copy_menu(event: tk.Event) -> None:
+    """Show a right-click context menu with a Copy option."""
+    widget = event.widget
+    # Walk up to find the nearest CTkFrame (card/section)
+    target = widget
+    while target and not isinstance(target, ctk.CTkFrame):
+        target = target.master
+    if not target:
+        return
+
+    menu = tk.Menu(target, tearoff=0, bg=BG_ELEVATED, fg=TEXT, font=FONT_SMALL,
+                   activebackground=PRIMARY_DIM, activeforeground=TEXT, relief="flat")
+    menu.add_command(
+        label="Copy",
+        command=lambda: _copy_frame_text(target),
+    )
+    menu.tk_popup(event.x_root, event.y_root)
+
+
+def _copy_frame_text(frame: ctk.CTkFrame) -> None:
+    """Copy all text content of a frame to the clipboard."""
+    text = _collect_text(frame)
+    if text:
+        frame.clipboard_clear()
+        frame.clipboard_append(text)
+
+
+def _enable_copy(widget: ctk.CTkBaseClass) -> None:
+    """Bind right-click copy menu to a widget and its children."""
+    widget.bind("<Button-3>", _show_copy_menu)
+    for child in widget.winfo_children():
+        child.bind("<Button-3>", _show_copy_menu)
+
+
 class ResultCard(ctk.CTkFrame):
     """A styled card for displaying a single result item."""
 
@@ -1174,6 +1224,7 @@ class ExpandableResultCard(ctk.CTkFrame):
         # Build detail content inside the scrollable frame
         detail_widget = detail_factory(self._detail_frame)
         detail_widget.pack(fill="both", expand=True, padx=6, pady=6)
+        _enable_copy(detail_widget)
 
     def toggle(self) -> None:
         """Expand or collapse the detail section."""
@@ -1772,6 +1823,7 @@ class ResultsPanel(ctk.CTkFrame):
                     corner_radius=8,
                 )
                 finding_frame.pack(fill="x", padx=12, pady=(0, 6))
+                _enable_copy(finding_frame)
 
                 # Title
                 ctk.CTkLabel(
