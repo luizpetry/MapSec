@@ -31,3 +31,8 @@ Mapsec.spec
 # Project
 *.json
 !pyproject.toml
+
+# Internal / not for repo
+ROADMAP.md
+exploit_cve_2026_29145.py
+mapsec.ico
